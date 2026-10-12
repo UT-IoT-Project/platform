@@ -72,6 +72,14 @@ distinguish real samples. Do not publish historical sensor readings as retained
 MQTT messages; retained messages represent the latest value on a topic, not a
 reading history.
 
+Project decision: use MQTT QoS 1 for sensor telemetry. Configure firmware
+publishers and the future Telegraf MQTT consumer to request QoS 1. Mosquitto's
+`max_qos 1` caps the listener at QoS 1, but does not force clients to use QoS 1;
+QoS 0 remains allowed. When adding Telegraf, use a stable client ID and
+persistent session if messages should be queued while it is offline. QoS 1 can
+redeliver messages, so map each retry to the same measurement, stable tags, and
+device measurement timestamp to make writes idempotent.
+
 ## Backend architecture: hexagonal boundaries
 
 Keep business behavior in the core and make external technologies adapters.
