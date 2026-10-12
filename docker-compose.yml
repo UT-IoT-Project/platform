@@ -47,17 +47,17 @@ services:
         - CMD-SHELL
         - >-
           if [ -n "$$INFLUXDB3_AUTH_TOKEN" ]; then
-            curl --fail --silent --show-error
-            -H "Authorization: Bearer $$INFLUXDB3_AUTH_TOKEN"
-            http://127.0.0.1:8181/health >/dev/null;
+          curl --fail --silent --show-error --max-time 1
+          -H "Authorization: Bearer $$INFLUXDB3_AUTH_TOKEN"
+          http://127.0.0.1:8181/health >/dev/null;
           else
-            curl --fail --silent --show-error
-            http://127.0.0.1:8181/health >/dev/null;
+          curl --fail --silent --show-error --max-time 1
+          http://127.0.0.1:8181/health >/dev/null;
           fi
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      interval: 5s
+      timeout: 1s
+      retries: 3
+      start_period: 5s
     volumes:
       - ./volumes/influxdb3/data:/var/lib/influxdb3/data
 
