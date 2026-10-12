@@ -1,0 +1,10 @@
+app:
+  name: busyness-sensing-api
+  env: development
+
+logger:
+  level: debug
+
+http:
+  address: 0.0.0.0
+  port: "8080"
