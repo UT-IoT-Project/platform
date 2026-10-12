@@ -147,7 +147,7 @@ safe implementation plan before editing.
 ## Configuration, startup, and commands
 
 - The Go module path is `github.com/jouleion/busyness-sensing/backend` and
-  `go.mod` currently targets Go 1.26.0. Keep imports consistent with the module
+  `go.mod` currently targets Go 1.27.0. Keep imports consistent with the module
   path.
 - The default config file is `configs/configs.general.yaml`, resolved relative
   to the current working directory. `go run . start --config <path>` selects a
