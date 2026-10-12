@@ -31,7 +31,7 @@ func init() {
 		&configPath,
 		"config",
 		"c",
-		"configs/configs.general.yaml",
+		"configs/configs.webserver.yml",
 		"configuration file path",
 	)
 }

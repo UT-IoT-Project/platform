@@ -17,7 +17,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 
 COPY --from=builder /out/server ./server
-COPY --from=builder /src/configs/configs.general.yaml ./configs/configs.general.yaml
+COPY --from=builder /src/configs/configs.webserver.yml ./configs/configs.webserver.yml
 
 EXPOSE 8080
 

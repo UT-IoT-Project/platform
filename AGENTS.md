@@ -149,7 +149,7 @@ safe implementation plan before editing.
 - The Go module path is `github.com/jouleion/busyness-sensing/backend` and
   `go.mod` currently targets Go 1.27.0. Keep imports consistent with the module
   path.
-- The default config file is `configs/configs.general.yaml`, resolved relative
+- The default config file is `configs/configs.webserver.yml`, resolved relative
   to the current working directory. `go run . start --config <path>` selects a
   different file.
 - Startup is currently `cmd.Execute()` → config load → logger initialization
