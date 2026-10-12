@@ -81,6 +81,11 @@ $RECYCLE.BIN/
 !/volumes/mosquitto/log/
 /volumes/mosquitto/log/*
 !/volumes/mosquitto/log/.gitkeep
+!/volumes/influxdb3/
+/volumes/influxdb3/*
+!/volumes/influxdb3/data/
+/volumes/influxdb3/data/*
+!/volumes/influxdb3/data/.gitkeep
 
 # Windows Installer files
 *.cab

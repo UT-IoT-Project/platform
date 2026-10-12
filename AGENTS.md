@@ -36,10 +36,12 @@ Responsibilities:
   the historical data store.
 - **Telegraf** is the ingestion bridge. It subscribes to MQTT, parses and maps
   message/topic data, then writes points to InfluxDB. Keep ingestion out of the
-  Go HTTP request path.
+  Go HTTP request path. Compose uses `telegraf:1.40.2-alpine` and the config at
+  `configs/telegraf.conf`.
 - **InfluxDB** stores timestamped readings and serves time-range queries to the
-  Go API. The selected InfluxDB major version/edition and its client/query API
-  must be confirmed when the adapter is implemented.
+  Go API. Compose uses InfluxDB 3 Core (`influxdb:3.11-core`) with settings in
+  `configs/influxdb3.env`; the Go adapter and its client/query API still need
+  to be implemented and verified against this version.
 - **Go backend** exposes a controlled HTTP API and owns request validation,
   authorization, query limits, response formats, and application use cases. It
   reads from InfluxDB; Telegraf owns MQTT ingestion.
@@ -48,13 +50,21 @@ Responsibilities:
 
 ### Telemetry contract and cross-repository changes
 
-The firmware repository is external to this backend repository, so this guide
-does not claim a current MQTT topic or payload shape. Before implementing or
-changing ingestion or API queries, confirm the current firmware contract with
-its owner and align the Telegraf mapping and any sample data with it. Treat
-proposed payloads as proposals until those components agree. Use a device
-measurement timestamp in UTC; consider recording a separate gateway receipt
-time if late or clock-skewed readings need diagnosis.
+The firmware repository is external to this backend repository. The currently
+agreed telemetry contract is:
+
+- Topic: `sensors/<buildingName>/<roomNumber>`.
+- `timestamp`: Unix seconds, used as the measurement timestamp.
+- Numeric `temprature` and `humidity`, plus optional numeric `co2`.
+- `PIRs`: array entries with stable `id` and numeric `value` properties.
+
+The starter Telegraf config uses separate MQTT consumers for room readings and
+PIR readings. It writes `room_telemetry` points with `building` and `room`
+tags, and `pir_reading` points with `building`, `room`, and `pir_id` tags.
+Numeric readings are fields. Keep PIR identity attached to the corresponding
+value; do not flatten anonymous array values. Reconfirm this mapping if the
+external firmware contract changes. Consider recording a separate gateway
+receipt time if late or clock-skewed readings need diagnosis.
 
 If multiple devices can publish for one room, include a stable `device_id` in
 the topic or payload so readings remain distinguishable. InfluxDB fields are
@@ -73,12 +83,15 @@ MQTT messages; retained messages represent the latest value on a topic, not a
 reading history.
 
 Project decision: use MQTT QoS 1 for sensor telemetry. Configure firmware
-publishers and the future Telegraf MQTT consumer to request QoS 1. Mosquitto's
+publishers and the Telegraf MQTT consumers to request QoS 1. Mosquitto's
 `max_qos 1` caps the listener at QoS 1, but does not force clients to use QoS 1;
-QoS 0 remains allowed. When adding Telegraf, use a stable client ID and
-persistent session if messages should be queued while it is offline. QoS 1 can
-redeliver messages, so map each retry to the same measurement, stable tags, and
-device measurement timestamp to make writes idempotent.
+QoS 0 remains allowed. The Telegraf consumers use stable client IDs and
+persistent sessions so messages can be queued while they are offline. QoS 1
+can redeliver messages, so mappings use the same measurements, stable tags,
+and device measurement timestamp to make writes idempotent.
+The current topic does not identify a device. If multiple devices can publish
+to the same room, update the agreed topic or payload to include a stable
+`device_id` before relying on device-level readings.
 
 ## Backend architecture: hexagonal boundaries
 
@@ -90,7 +103,7 @@ clients, or MQTT libraries.
 | Path | Boundary and responsibility |
 | --- | --- |
 | `cmd/` | CLI entry points and dependency wiring. Construct adapters and services here. |
-| `configs/` | Local YAML configuration defaults. Never commit real credentials. |
+| `configs/` | Backend YAML plus Mosquitto, InfluxDB environment, and Telegraf TOML configs. Never commit real credentials. |
 | `internal/app/config/` | Parse application, HTTP, logging, and future database settings. |
 | `internal/app/log/` | Initialize the application logger. |
 | `internal/core/domain/` | Business entities and domain types; independent of transport and storage. |
@@ -123,14 +136,16 @@ This module is scaffolding, not a completed API:
   HTTP server.
 - `internal/driver/http/server.go` configures Echo middleware but currently
   registers no application routes.
-- `Dockerfile` packages the backend, and `docker-compose.yml` defines a backend
-  service. The Compose file does not configure the broker, Telegraf, or
-  InfluxDB.
+- `Dockerfile` packages the backend. `docker-compose.yml` defines backend,
+  Mosquitto, InfluxDB 3 Core, and Telegraf services. Telegraf configuration
+  writes telemetry into separate room and PIR measurements. Local InfluxDB
+  data is stored under `volumes/influxdb3/data/`.
 - `internal/core/domain/`, `internal/core/port/`, and
   `internal/core/service/` contain package placeholders only.
 - `internal/driven/database/influxdb/` is a package placeholder; there is no
   InfluxDB client, connection setup, repository, or query yet.
-- There is no Go MQTT subscriber. Telegraf is intended to own that role.
+- There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server
+  and InfluxDB adapter remain scaffolding.
 
 Keep this status accurate as files are added. Do not describe an endpoint,
 database adapter, or deployment as implemented until its code exists.
@@ -166,6 +181,12 @@ safe implementation plan before editing.
   configuration for InfluxDB and MQTT-related credentials if the backend ever
   needs them; the backend should not need MQTT credentials for read-only API
   queries.
+- The local InfluxDB Compose config disables authentication and binds its host
+  port to loopback. Enable authentication and keep its token in the environment
+  before exposing the service beyond the local development machine.
+- Create the InfluxDB database before writing with
+  `docker compose exec influxdb3 influxdb3 create database busyness_sensing`.
+  The local Telegraf output targets that database.
 - Format Go code with `gofmt`. Useful commands from this directory are
   `go run . --help`, `go run . start`, `go test ./...`, and `go vet ./...`.
 
