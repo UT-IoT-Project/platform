@@ -2,10 +2,11 @@
 
 ## Scope and project context
 
-This directory is the Go backend module root. Run Go commands from here. The
-ESP32 firmware and gateway live in sibling directories (`../esp` and
-`../gateway`); consult them and the parent `../Readme.md` when changing an
-interface shared across components.
+This directory is the Go backend repository and module root. Run Go commands
+from here. ESP32 firmware is developed in a separate Git repository by another
+maintainer; firmware source is not part of this repository. Coordinate changes
+to interfaces shared with firmware with that repository's owner and its current
+documentation/configuration rather than assuming a local firmware tree exists.
 
 The system collects room sensor readings, stores them as time-series data, and
 serves readings to external clients. Python/ML clients and a future UI should
@@ -29,8 +30,8 @@ Go HTTP API ─────────────► UI, Python/ML clients, ot
 
 Responsibilities:
 
-- **ESP32 firmware** samples sensors, computes per-interval values, and
-  publishes telemetry. It should not know about InfluxDB or the Go API.
+- **ESP32 firmware** is maintained in a separate repository. It samples sensors
+  and publishes telemetry; it should not know about InfluxDB or the Go API.
 - **Mosquitto** routes MQTT publications to subscribers. It is a broker, not
   the historical data store.
 - **Telegraf** is the ingestion bridge. It subscribes to MQTT, parses and maps
@@ -45,39 +46,24 @@ Responsibilities:
 - **UI and Python/ML clients** call the Go API. The API is the public boundary
   for reading project data.
 
-### Telemetry contract: known state and open mismatch
+### Telemetry contract and cross-repository changes
 
-The firmware and sample notes currently describe different payloads. Do not
-assume they are interchangeable:
+The firmware repository is external to this backend repository, so this guide
+does not claim a current MQTT topic or payload shape. Before implementing or
+changing ingestion or API queries, confirm the current firmware contract with
+its owner and align the Telegraf mapping and any sample data with it. Treat
+proposed payloads as proposals until those components agree. Use a device
+measurement timestamp in UTC; consider recording a separate gateway receipt
+time if late or clock-skewed readings need diagnosis.
 
-- `../esp/src/main.cpp` currently publishes to
-  `<building>/<room>/sensors` and emits `temperature`, `humidity`, `pressure`,
-  `iaq`, `voc`, `co2Equivalent`, `accuracy`, `pir1`, `pir2`, and `pir3`.
-  It does not currently include a measurement timestamp.
-- `../dummy_data.txt` is a draft with a different topic (`building/room/state`)
-  and different fields (`tempC`, `hum`, individual PIRs, optional `co2`, and a
-  timestamp). It is illustrative and is not valid JSON as written.
-- A later proposed shape uses an integer Unix timestamp, temperature,
-  humidity, a variable-length `PIRs` array, and optional `co2`. This is also a
-  proposal until the firmware and ingestion configuration agree on it.
-
-Before implementing ingestion or API queries, identify which contract is
-current and update the relevant firmware, sample data, and Telegraf mapping
-together. Use a device measurement timestamp in UTC; consider recording a
-separate gateway receipt time if late or clock-skewed readings need diagnosis.
-
-The planned topic has been described as `<building>/<room>`, while current
-firmware uses `<building>/<room>/sensors`. Preserve the actual topic when
-working against current firmware. If multiple devices can publish for one
-room, include a stable `device_id` in the topic or payload so readings remain
-distinguishable.
-
-InfluxDB fields are scalar values. For a variable-length PIR array, preserve
-sensor identity explicitly (for example, array entries with stable `id` and
-`value` properties), or transform the data into named fields before writing.
-Do not flatten anonymous values in a way that loses which PIR produced them.
-For InfluxDB, use tags for string identifiers such as building, room, device,
-and PIR ID; use fields for numeric measurements. Keep timestamps as timestamps,
+If multiple devices can publish for one room, include a stable `device_id` in
+the topic or payload so readings remain distinguishable. InfluxDB fields are
+scalar values. For a variable-length PIR array, preserve sensor identity
+explicitly (for example, array entries with stable `id` and `value`
+properties), or transform the data into named fields before writing. Do not
+flatten anonymous values in a way that loses which PIR produced them. For
+InfluxDB, use tags for string identifiers such as building, room, device, and
+PIR ID; use fields for numeric measurements. Keep timestamps as timestamps,
 not fields or tags.
 
 MQTT QoS 1 delivery can repeat messages. Ingestion mappings should make
@@ -129,12 +115,14 @@ This module is scaffolding, not a completed API:
   HTTP server.
 - `internal/driver/http/server.go` configures Echo middleware but currently
   registers no application routes.
+- `Dockerfile` packages the backend, and `docker-compose.yml` defines a backend
+  service. The Compose file does not configure the broker, Telegraf, or
+  InfluxDB.
 - `internal/core/domain/`, `internal/core/port/`, and
   `internal/core/service/` contain package placeholders only.
 - `internal/driven/database/influxdb/` is a package placeholder; there is no
   InfluxDB client, connection setup, repository, or query yet.
 - There is no Go MQTT subscriber. Telegraf is intended to own that role.
-- The gateway currently has no broker configuration or Compose deployment.
 
 Keep this status accurate as files are added. Do not describe an endpoint,
 database adapter, or deployment as implemented until its code exists.
