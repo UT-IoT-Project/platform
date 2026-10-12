@@ -37,7 +37,8 @@ Responsibilities:
 - **Telegraf** is the ingestion bridge. It subscribes to MQTT, parses and maps
   message/topic data, then writes points to InfluxDB. Keep ingestion out of the
   Go HTTP request path. Compose uses `telegraf:1.40.2-alpine` and the config at
-  `configs/telegraf.conf`.
+  `configs/telegraf.conf`. Compose starts it after the Mosquitto and InfluxDB
+  health checks pass.
 - **InfluxDB** stores timestamped readings and serves time-range queries to the
   Go API. Compose uses InfluxDB 3 Core (`influxdb:3.11-core`) with settings in
   `configs/influxdb3.env`; the Go adapter and its client/query API still need
@@ -139,7 +140,9 @@ This module is scaffolding, not a completed API:
 - `Dockerfile` packages the backend. `docker-compose.yml` defines backend,
   Mosquitto, InfluxDB 3 Core, and Telegraf services. Telegraf configuration
   writes telemetry into separate room and PIR measurements. Local InfluxDB
-  data is stored under `volumes/influxdb3/data/`.
+  data is stored under `volumes/influxdb3/data/`. Mosquitto and InfluxDB
+  healthchecks gate Telegraf startup; Telegraf also has a process liveness
+  healthcheck.
 - `internal/core/domain/`, `internal/core/port/`, and
   `internal/core/service/` contain package placeholders only.
 - `internal/driven/database/influxdb/` is a package placeholder; there is no

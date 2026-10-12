@@ -26,6 +26,12 @@ versions are pinned in `docker-compose.yml`. InfluxDB is published only on
 the stack on a trusted machine and enable authentication before exposing it to
 a network.
 
+Compose waits for Mosquitto and InfluxDB healthchecks to pass before starting
+Telegraf. The Mosquitto check only connects and subscribes to a dedicated
+health topic; it publishes no MQTT message. InfluxDB is checked with its
+`/health` endpoint. Telegraf's healthcheck confirms its process is alive, not
+that readings are currently arriving or being stored.
+
 Create the InfluxDB database before Telegraf can store readings:
 
 ```sh

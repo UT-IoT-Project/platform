@@ -9,6 +9,23 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.1-alpine
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mosquitto_sub",
+          "-h",
+          "127.0.0.1",
+          "-p",
+          "1883",
+          "-t",
+          "healthcheck/compose",
+          "-E",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     ports:
       - "1883:1883"
     volumes:
@@ -23,6 +40,24 @@ services:
       - "127.0.0.1:8181:8181"
     env_file:
       - ./configs/influxdb3.env
+    environment:
+      INFLUXDB3_AUTH_TOKEN: ${INFLUXDB3_AUTH_TOKEN:-}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          if [ -n "$$INFLUXDB3_AUTH_TOKEN" ]; then
+            curl --fail --silent --show-error
+            -H "Authorization: Bearer $$INFLUXDB3_AUTH_TOKEN"
+            http://127.0.0.1:8181/health >/dev/null;
+          else
+            curl --fail --silent --show-error
+            http://127.0.0.1:8181/health >/dev/null;
+          fi
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     volumes:
       - ./volumes/influxdb3/data:/var/lib/influxdb3/data
 
@@ -30,9 +65,17 @@ services:
     image: telegraf:1.40.2-alpine
     restart: unless-stopped
     depends_on:
-      - mosquitto
-      - influxdb3
+      mosquitto:
+        condition: service_healthy
+      influxdb3:
+        condition: service_healthy
     environment:
       INFLUXDB3_AUTH_TOKEN: ${INFLUXDB3_AUTH_TOKEN:-}
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     volumes:
       - ./configs/telegraf.conf:/etc/telegraf/telegraf.conf:ro
