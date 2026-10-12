@@ -5,3 +5,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+
+  mosquitto:
+    image: eclipse-mosquitto:2.1-alpine
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./configs/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./volumes/mosquitto/data:/mosquitto/data
+      - ./volumes/mosquitto/log:/mosquitto/log

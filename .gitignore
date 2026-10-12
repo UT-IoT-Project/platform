@@ -71,6 +71,17 @@ ehthumbs_vista.db
 # Recycle Bin used on file shares
 $RECYCLE.BIN/
 
+# Mosquitto runtime data and logs
+/volumes/*
+!/volumes/mosquitto/
+/volumes/mosquitto/*
+!/volumes/mosquitto/data/
+/volumes/mosquitto/data/*
+!/volumes/mosquitto/data/.gitkeep
+!/volumes/mosquitto/log/
+/volumes/mosquitto/log/*
+!/volumes/mosquitto/log/.gitkeep
+
 # Windows Installer files
 *.cab
 *.msi
