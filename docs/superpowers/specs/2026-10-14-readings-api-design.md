@@ -24,7 +24,7 @@ Every response contains:
 
 For `CO2`, `humidity`, and `temprature`, each data property is an array of readings with `timestamp` (same format and timezone convention as the request) and numeric `value`.
 
-For `PIR`, `data.PIR` is an array of timestamped objects. Each object has `timestamp` and `values`, an array of numeric readings for all PIR sensors at that timestamp. PIR identifiers are omitted from this response array.
+For `PIR`, `data.PIR` is an array of timestamped objects. Each object has `timestamp` and `values`, an array containing all PIR readings at that timestamp. Each values entry contains an integer `ID` and numeric `value` fields, preserving the identity of each PIR sensor.
 
 For HTTP 200, `message` is `data retrieved successfully`. If a requested sensor has no readings in the range, its key remains in `data` with an empty array. An empty result still returns HTTP 200.
 
