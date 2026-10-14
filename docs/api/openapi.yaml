@@ -1,0 +1,165 @@
+openapi: 3.1.0
+info:
+  title: Busyness Sensing Readings API
+  version: 1.0.0
+  description: Contract for retrieving selected sensor readings over a time range.
+paths:
+  /api/v1/readings/{start_timestamp}/{end_timestamp}:
+    get:
+      summary: Retrieve sensor readings
+      description: >-
+        Timestamps use `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured
+        local timezone. Spaces inside timestamp path segments must be percent-
+        encoded as `%20`. For example:
+        `/api/v1/readings/2026-10-14%2010:00:00.000/2026-10-14%2011:00:00.000?sensors=PIR1&sensors=CO2`.
+      operationId: getReadings
+      parameters:
+        - name: start_timestamp
+          in: path
+          required: true
+          description: Start of the requested range, in the server's configured local timezone.
+          schema:
+            $ref: '#/components/schemas/Timestamp'
+          example: '2026-10-14 10:00:00.000'
+        - name: end_timestamp
+          in: path
+          required: true
+          description: End of the requested range, in the server's configured local timezone.
+          schema:
+            $ref: '#/components/schemas/Timestamp'
+          example: '2026-10-14 11:00:00.000'
+        - name: sensors
+          in: query
+          required: true
+          description: >-
+            Sensor names to retrieve. Supply one query parameter per sensor;
+            names are open strings, including dynamic PIR IDs and named
+            measurements such as CO2, humidity, and temprature.
+          style: form
+          explode: true
+          schema:
+            type: array
+            minItems: 1
+            items:
+              type: string
+          examples:
+            multiple:
+              summary: Request multiple sensors using repeated keys
+              value:
+                - PIR1
+                - CO2
+      responses:
+        '200':
+          description: Readings retrieved successfully. Sensors without readings are returned with empty arrays.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadingsResponse'
+              examples:
+                populated:
+                  summary: Requested sensors have readings
+                  value:
+                    status: 200
+                    message: data retrieved successfully
+                    data:
+                      PIR1:
+                        - timestamp: '2026-10-14 10:15:30.250'
+                          value: 1
+                      CO2:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 612
+                empty:
+                  summary: Requested sensors have no readings in the range
+                  value:
+                    status: 200
+                    message: data retrieved successfully
+                    data:
+                      PIR1: []
+                      CO2: []
+        '400':
+          description: Request validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidTimestamp:
+                  summary: Timestamp does not match the required format
+                  value:
+                    status: 400
+                    message: Invalid timestamp format.
+                    data: {}
+                emptySensors:
+                  summary: Sensors query parameter is missing or empty
+                  value:
+                    status: 400
+                    message: Empty list of sensors are not allowed.
+                    data: {}
+        '500':
+          description: Unexpected server error. The message describes the error without exposing internal details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: 500
+                message: Internal server error.
+                data: {}
+components:
+  schemas:
+    Timestamp:
+      type: string
+      description: Timestamp formatted as YYYY-MM-DD HH:mm:ss.SSS in the server's configured local timezone.
+      pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$'
+      examples:
+        - '2026-10-14 10:00:00.000'
+    Reading:
+      type: object
+      required:
+        - timestamp
+        - value
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        value:
+          type: number
+    SensorData:
+      type: object
+      description: Map of requested sensor names to their readings; sensor names are dynamic.
+      additionalProperties:
+        type: array
+        items:
+          $ref: '#/components/schemas/Reading'
+    ReadingsResponse:
+      type: object
+      required:
+        - status
+        - message
+        - data
+      properties:
+        status:
+          type: integer
+          const: 200
+        message:
+          type: string
+          const: data retrieved successfully
+        data:
+          $ref: '#/components/schemas/SensorData'
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - message
+        - data
+      properties:
+        status:
+          type: integer
+          enum:
+            - 400
+            - 500
+        message:
+          type: string
+          description: Validation message or a generic server error message that does not expose internal details.
+        data:
+          type: object
+          maxProperties: 0

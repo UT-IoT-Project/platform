@@ -70,6 +70,6 @@ range.
 
 ## Backend
 
-Run the backend alone with `go run . start`. The HTTP server currently has no
-application routes; API routes and database queries will be added when the API
-contract is implemented.
+Run the backend alone with `go run . start`. The OpenAPI contract is
+documented in `docs/api/openapi.yaml`. The HTTP server currently has no
+application routes, so the documented readings route remains unimplemented.
