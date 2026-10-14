@@ -11,7 +11,7 @@ paths:
         Timestamps use `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured
         local timezone. Spaces inside timestamp path segments must be percent-
         encoded as `%20`. For example:
-        `/api/v1/readings/2026-10-14%2010:00:00.000/2026-10-14%2011:00:00.000?sensors=PIR1&sensors=CO2`.
+        `/api/v1/readings/2026-10-14%2010:00:00.000/2026-10-14%2011:00:00.000?sensors=PIR&sensors=CO2`.
       operationId: getReadings
       parameters:
         - name: start_timestamp
@@ -32,10 +32,9 @@ paths:
           in: query
           required: true
           description: >-
-            Sensor names to retrieve. Supply one query parameter per sensor;
-            names must be non-empty strings, including dynamic PIR IDs and
-            named measurements such as CO2, humidity, and temprature. Blank
-            sensor names are invalid.
+            Case-sensitive sensor names to retrieve. Supply one query
+            parameter per sensor. Supported names are PIR, CO2, humidity, and
+            temprature. PIR returns all PIR readings grouped by timestamp.
           style: form
           explode: true
           schema:
@@ -43,12 +42,16 @@ paths:
             minItems: 1
             items:
               type: string
-              minLength: 1
+              enum:
+                - PIR
+                - CO2
+                - humidity
+                - temprature
           examples:
             multiple:
               summary: Request multiple sensors using repeated keys
               value:
-                - PIR1
+                - PIR
                 - CO2
       responses:
         '200':
@@ -64,20 +67,28 @@ paths:
                     status: 200
                     message: data retrieved successfully
                     data:
-                      PIR1:
+                      PIR:
                         - timestamp: '2026-10-14 10:15:30.250'
-                          value: 1
+                          values: [1, 0, 1]
                       CO2:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 612
+                      humidity:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 48.5
+                      temprature:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 21.7
                 empty:
                   summary: Requested sensors have no readings in the range
                   value:
                     status: 200
                     message: data retrieved successfully
                     data:
-                      PIR1: []
+                      PIR: []
                       CO2: []
+                      humidity: []
+                      temprature: []
         '400':
           description: Request validation failed.
           content:
@@ -96,6 +107,12 @@ paths:
                   value:
                     status: 400
                     message: Empty list of sensors are not allowed.
+                    data: {}
+                unknownSensor:
+                  summary: Sensor name is not supported
+                  value:
+                    status: 400
+                    message: Unknown sensor name.
                     data: {}
         '500':
           description: Unexpected server error. The message describes the error without exposing internal details.
@@ -125,9 +142,27 @@ components:
           $ref: '#/components/schemas/Timestamp'
         value:
           type: number
+    PIRReading:
+      type: object
+      description: All PIR numeric readings at the given timestamp; PIR identifiers are omitted.
+      required:
+        - timestamp
+        - values
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        values:
+          type: array
+          items:
+            type: number
     SensorData:
       type: object
-      description: Map of requested sensor names to their readings; sensor names are dynamic.
+      description: Requested sensor names map to timestamped readings. PIR readings are grouped by timestamp; other sensors use scalar values.
+      properties:
+        PIR:
+          type: array
+          items:
+            $ref: '#/components/schemas/PIRReading'
       additionalProperties:
         type: array
         items:
@@ -176,6 +211,7 @@ components:
               enum:
                 - Invalid timestamp format.
                 - Empty list of sensors are not allowed.
+                - Unknown sensor name.
     ServerErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
