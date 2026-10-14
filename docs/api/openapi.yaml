@@ -145,6 +145,7 @@ components:
     PIRReading:
       type: object
       description: All PIR numeric readings at the given timestamp; PIR identifiers are omitted.
+      additionalProperties: false
       required:
         - timestamp
         - values
@@ -163,10 +164,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PIRReading'
-      additionalProperties:
-        type: array
-        items:
-          $ref: '#/components/schemas/Reading'
+        CO2:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reading'
+        humidity:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reading'
+        temprature:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reading'
+      additionalProperties: false
     ReadingsResponse:
       type: object
       required:
