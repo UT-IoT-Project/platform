@@ -69,7 +69,13 @@ paths:
                     data:
                       PIR:
                         - timestamp: '2026-10-14 10:15:30.250'
-                          values: [1, 0, 1]
+                          values:
+                            - ID: 1
+                              value: 1
+                            - ID: 2
+                              value: 0
+                            - ID: 3
+                              value: 1
                       CO2:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 612
@@ -142,9 +148,20 @@ components:
           $ref: '#/components/schemas/Timestamp'
         value:
           type: number
+    PIRValue:
+      type: object
+      additionalProperties: false
+      required:
+        - ID
+        - value
+      properties:
+        ID:
+          type: integer
+        value:
+          type: number
     PIRReading:
       type: object
-      description: All PIR numeric readings at the given timestamp; PIR identifiers are omitted.
+      description: All PIR readings at the given timestamp, with each sensor ID preserved alongside its numeric value.
       additionalProperties: false
       required:
         - timestamp
@@ -155,7 +172,7 @@ components:
         values:
           type: array
           items:
-            type: number
+            $ref: '#/components/schemas/PIRValue'
     SensorData:
       type: object
       description: Requested sensor names map to timestamped readings. PIR readings are grouped by timestamp; other sensors use scalar values.
