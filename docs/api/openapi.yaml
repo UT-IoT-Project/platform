@@ -4,25 +4,40 @@ info:
   version: 1.0.0
   description: Contract for retrieving selected sensor readings over a time range.
 paths:
-  /api/v1/readings/{start_timestamp}/{end_timestamp}:
+  /api/v1/readings/{building}/{roomNumber}:
     get:
       summary: Retrieve sensor readings
       description: >-
-        Timestamps use `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured
-        local timezone. Spaces inside timestamp path segments must be percent-
-        encoded as `%20`. For example:
-        `/api/v1/readings/2026-10-14%2010:00:00.000/2026-10-14%2011:00:00.000?sensors=PIR&sensors=CO2`.
+        Returns readings for the selected building and room. Timestamps use
+        `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured local timezone.
+        Supply one `sensors` query parameter per requested sensor. For
+        example:
+        `/api/v1/readings/zilverling/Z2402?start_time=2026-10-14%2010:00:00.000&end_time=2026-10-14%2011:00:00.000&sensors=PIR&sensors=CO2`.
       operationId: getReadings
       parameters:
-        - name: start_timestamp
+        - name: building
           in: path
+          required: true
+          description: Building identifier to retrieve readings from.
+          schema:
+            type: string
+          example: zilverling
+        - name: roomNumber
+          in: path
+          required: true
+          description: Room identifier within the selected building.
+          schema:
+            type: string
+          example: Z2402
+        - name: start_time
+          in: query
           required: true
           description: Start of the requested range, in the server's configured local timezone.
           schema:
             $ref: '#/components/schemas/Timestamp'
           example: '2026-10-14 10:00:00.000'
-        - name: end_timestamp
-          in: path
+        - name: end_time
+          in: query
           required: true
           description: End of the requested range, in the server's configured local timezone.
           schema:
@@ -120,6 +135,16 @@ paths:
                     status: 400
                     message: Unknown sensor name.
                     data: {}
+        '404':
+          description: The requested building or room does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundResponse'
+              example:
+                status: 404
+                message: Building or room not found.
+                data: {}
         '500':
           description: Unexpected server error. The message describes the error without exposing internal details.
           content:
@@ -220,6 +245,7 @@ components:
           type: integer
           enum:
             - 400
+            - 404
             - 500
         message:
           type: string
@@ -239,6 +265,15 @@ components:
                 - Invalid timestamp format.
                 - Empty list of sensors are not allowed.
                 - Unknown sensor name.
+    NotFoundResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            status:
+              const: 404
+            message:
+              const: Building or room not found.
     ServerErrorResponse:
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
