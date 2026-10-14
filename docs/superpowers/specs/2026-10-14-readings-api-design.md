@@ -7,12 +7,13 @@ Define a Swagger/OpenAPI contract for clients to request selected sensor reading
 ## Endpoint and request
 
 - Method: `GET`
-- Path: `/api/v1/readings/{start_timestamp}/{end_timestamp}`
-- `start_timestamp` and `end_timestamp` are required path parameters formatted as `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured local timezone. Spaces in URL path segments must be percent-encoded as `%20`.
+- Path: `/api/v1/readings/{building}/{roomNumber}`
+- `building` and `roomNumber` are required string path parameters identifying the location. For example: `/api/v1/readings/zilverling/Z2402`.
+- `start_time` and `end_time` are required query parameters formatted as `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured local timezone. Spaces in query values must be percent-encoded as `%20`.
 - `sensors` is a required, nonempty query array represented with repeated keys. For example: `?sensors=PIR&sensors=CO2`.
 - Supported sensor names are case-sensitive: `PIR`, `CO2`, `humidity`, and `temprature`. `PIR` requests all PIR readings. Any other sensor name returns HTTP 400.
 
-A GET request body is not used. The request values are carried in the path and query string.
+A GET request body is not used. The request values are carried in the path and query string. A complete example is `/api/v1/readings/zilverling/Z2402?start_time=2026-10-14%2010:00:00.000&end_time=2026-10-14%2011:00:00.000&sensors=PIR&sensors=CO2`.
 
 ## Response
 
@@ -36,6 +37,8 @@ For HTTP 400 validation errors, `data` is an empty object and `message` is one o
 
 Unexpected server errors use HTTP 500, the same response envelope, and an empty `data` object. The message is `Internal server error.`
 
+If the requested building or room does not exist, the API returns HTTP 404 with an empty `data` object and the message `Building or room not found.`
+
 ## OpenAPI artifact
 
-`docs/api/openapi.yaml` uses OpenAPI 3.1.0. It defines the endpoint parameters, response schemas, and examples for populated and empty results, PIR aggregation, each 400 validation error, and 500. It documents the supported sensor names and that URL path spaces are encoded as `%20`. The HTTP route remains unimplemented.
+`docs/api/openapi.yaml` uses OpenAPI 3.1.0. It defines the endpoint parameters, response schemas, and examples for populated and empty results, PIR aggregation, each 400 validation error, 404 for an unknown building or room, and 500. It documents the supported sensor names and that URL query spaces are encoded as `%20`. The HTTP route remains unimplemented.

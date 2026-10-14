@@ -71,5 +71,9 @@ range.
 ## Backend
 
 Run the backend alone with `go run . start`. The OpenAPI contract is
-documented in `docs/api/openapi.yaml`. The HTTP server currently has no
-application routes, so the documented readings route remains unimplemented.
+documented in [`docs/api/openapi.yaml`](docs/api/openapi.yaml). The contract
+uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
+`end_time`, and repeated `sensors` query parameters. Requests for a building
+or room absent from the database return HTTP 404. The HTTP server currently
+has no application routes, so the documented readings route remains
+unimplemented.
