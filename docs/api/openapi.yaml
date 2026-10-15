@@ -8,11 +8,13 @@ paths:
     get:
       summary: Retrieve sensor readings
       description: >-
-        Returns readings for the selected building and room. Timestamps use
-        `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured local timezone.
+        Returns readings for the selected building and room. Telegraf assigns
+        reading times when it parses MQTT messages; the payload has no device
+        timestamp. API timestamps use `YYYY-MM-DD HH:mm:ss.SSS` in the server's
+        configured local timezone.
         Supply one `sensors` query parameter per requested sensor. For
         example:
-        `/api/v1/readings/zilverling/Z2402?start_time=2026-10-14%2010:00:00.000&end_time=2026-10-14%2011:00:00.000&sensors=PIR&sensors=CO2`.
+        `/api/v1/readings/zilverling/Z2402?start_time=2026-10-14%2010:00:00.000&end_time=2026-10-14%2011:00:00.000&sensors=PIR&sensors=temp`.
       operationId: getReadings
       parameters:
         - name: building
@@ -48,8 +50,9 @@ paths:
           required: true
           description: >-
             Case-sensitive sensor names to retrieve. Supply one query
-            parameter per sensor. Supported names are PIR, CO2, humidity, and
-            temprature. PIR returns all PIR readings grouped by timestamp.
+            parameter per sensor. Supported names are PIR, pressure, hum, temp,
+            co2equivalent, voc, airresistance, mic_vol, and busy_level. PIR
+            returns all PIR readings grouped by timestamp.
           style: form
           explode: true
           schema:
@@ -59,15 +62,20 @@ paths:
               type: string
               enum:
                 - PIR
-                - CO2
-                - humidity
-                - temprature
+                - pressure
+                - hum
+                - temp
+                - co2equivalent
+                - voc
+                - airresistance
+                - mic_vol
+                - busy_level
           examples:
             multiple:
               summary: Request multiple sensors using repeated keys
               value:
                 - PIR
-                - CO2
+                - temp
       responses:
         '200':
           description: Readings retrieved successfully. Sensors without readings are returned with empty arrays.
@@ -85,21 +93,36 @@ paths:
                       PIR:
                         - timestamp: '2026-10-14 10:15:30.250'
                           values:
-                            - ID: 1
+                            - ID: pir-1
                               value: 1
-                            - ID: 2
+                            - ID: pir-2
                               value: 0
-                            - ID: 3
+                            - ID: pir-3
                               value: 1
-                      CO2:
+                      pressure:
                         - timestamp: '2026-10-14 10:16:00.000'
-                          value: 612
-                      humidity:
+                          value: 1013.25
+                      hum:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 48.5
-                      temprature:
+                      temp:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 21.7
+                      co2equivalent:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 612.0
+                      voc:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 0.42
+                      airresistance:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 12345.6
+                      mic_vol:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 0.18
+                      busy_level:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 2
                 empty:
                   summary: Requested sensors have no readings in the range
                   value:
@@ -107,9 +130,14 @@ paths:
                     message: data retrieved successfully
                     data:
                       PIR: []
-                      CO2: []
-                      humidity: []
-                      temprature: []
+                      pressure: []
+                      hum: []
+                      temp: []
+                      co2equivalent: []
+                      voc: []
+                      airresistance: []
+                      mic_vol: []
+                      busy_level: []
         '400':
           description: Request validation failed.
           content:
@@ -173,6 +201,19 @@ components:
           $ref: '#/components/schemas/Timestamp'
         value:
           type: number
+    BusyLevelReading:
+      type: object
+      description: Timestamped busy_level reading. The source value is an int8.
+      required:
+        - timestamp
+        - value
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        value:
+          type: integer
+          minimum: -128
+          maximum: 127
     PIRValue:
       type: object
       additionalProperties: false
@@ -181,7 +222,7 @@ components:
         - value
       properties:
         ID:
-          type: integer
+          type: string
         value:
           type: number
     PIRReading:
@@ -206,18 +247,38 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PIRReading'
-        CO2:
+        pressure:
           type: array
           items:
             $ref: '#/components/schemas/Reading'
-        humidity:
+        hum:
           type: array
           items:
             $ref: '#/components/schemas/Reading'
-        temprature:
+        temp:
           type: array
           items:
             $ref: '#/components/schemas/Reading'
+        co2equivalent:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reading'
+        voc:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reading'
+        airresistance:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reading'
+        mic_vol:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reading'
+        busy_level:
+          type: array
+          items:
+            $ref: '#/components/schemas/BusyLevelReading'
       additionalProperties: false
     ReadingsResponse:
       type: object

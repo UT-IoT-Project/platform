@@ -39,20 +39,47 @@ docker compose exec influxdb3 influxdb3 create database busyness_sensing
 ```
 
 Telegraf subscribes to `sensors/<buildingName>/<roomNumber>` at QoS 1. For
-example, Building BBB, room 212 publishes to `sensors/BBB/212`. The parser uses
-the payload's `timestamp` as Unix seconds and writes two measurements into the
-`busyness_sensing` database:
+example, Building BBB, room 212 publishes to `sensors/BBB/212`. The ESP32
+payload does not include a timestamp; Telegraf timestamps readings when it
+parses the message. A payload looks like this:
+
+```json
+{
+  "pressure": 1013.25,
+  "hum": 48.2,
+  "temp": 22.5,
+  "co2equivalent": 615.0,
+  "voc": 0.42,
+  "airresistance": 12345.6,
+  "mic_vol": 0.18,
+  "busy_level": 2,
+  "PIRs": [
+    {"id": "pir-1", "value": 1},
+    {"id": "pir-2", "value": 0}
+  ]
+}
+```
+
+`pressure`, `hum`, `temp`, `co2equivalent`, `voc`, `airresistance`, and
+`mic_vol` are float32 values from the ESP32; `co2equivalent` is optional.
+`busy_level` is an int8 value (-128 through 127). Telegraf converts the
+floating-point readings to its `float` field type and `busy_level` to `int`;
+its parser does not enforce the source's float32 precision or int8 range.
+`PIRs` is an array of objects with a stable string `id` and numeric `value`.
+Telegraf writes two measurements into the `busyness_sensing` database:
 
 | Measurement | Tags | Fields |
 | --- | --- | --- |
-| `room_telemetry` | `building`, `room` | `temprature`, `humidity`, optional `co2` |
+| `room_telemetry` | `building`, `room` | `pressure`, `hum`, `temp`, optional `co2equivalent`, `voc`, `airresistance`, `mic_vol`, `busy_level` |
 | `pir_reading` | `building`, `room`, `pir_id` | `value` |
 
 Room and building identifiers are tags so queries can filter by them. Each PIR
 is written as its own point so its ID remains attached to the numeric value.
-The supplied `temprature` spelling is retained. Service config lives in
-`configs/influxdb3.env` and `configs/telegraf.conf`. Set
+Service config lives in `configs/influxdb3.env` and
+`configs/telegraf.conf`. Set
 `INFLUXDB3_AUTH_TOKEN` in the environment if InfluxDB authentication is enabled.
+Because the payload has no device timestamp, a QoS 1 redelivery can create
+another point at a later time; ingestion is not deduplicated.
 
 Example SQL for readings from the past hour in Building BBB, room 212:
 
@@ -73,10 +100,11 @@ range.
 Run the backend alone with `go run . start`. The OpenAPI contract is
 documented in [`docs/api/openapi.yaml`](docs/api/openapi.yaml). The contract
 uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
-`end_time`, and repeated `sensors` query parameters. Requests for a building
-or room absent from the database return HTTP 404. The HTTP server currently
-has no application routes, so the documented readings route remains
-unimplemented.
+`end_time`, and repeated `sensors` query parameters. Supported sensor names are
+`PIR`, `pressure`, `hum`, `temp`, `co2equivalent`, `voc`, `airresistance`,
+`mic_vol`, and `busy_level`. Requests for a building or room absent from the
+database return HTTP 404. The HTTP server currently has no application routes,
+so the documented readings route remains unimplemented.
 
 ## Raspi
 ssh busy@busy-raspi
