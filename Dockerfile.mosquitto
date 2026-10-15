@@ -1,0 +1,15 @@
+FROM eclipse-mosquitto:2.1.2-alpine AS build
+
+RUN apk add --no-cache build-base cjson-dev \
+    && wget -q https://mosquitto.org/files/source/mosquitto-2.1.2.tar.gz -O /tmp/mosquitto.tar.gz \
+    && echo 'fd905380691ac65ea5a93779e8214941829e3d6e038d5edff9eac5fd74cbed02  /tmp/mosquitto.tar.gz' | sha256sum -c - \
+    && tar -xzf /tmp/mosquitto.tar.gz -C /tmp
+
+COPY plugins/mosquitto_ingress_timestamp.c /tmp/mosquitto_ingress_timestamp.c
+RUN cc -O2 -fPIC -shared -Wall -Wextra -Werror \
+    -I/tmp/mosquitto-2.1.2/include \
+    -o /tmp/mosquitto_ingress_timestamp.so \
+    /tmp/mosquitto_ingress_timestamp.c -lcjson
+
+FROM eclipse-mosquitto:2.1.2-alpine
+COPY --from=build /tmp/mosquitto_ingress_timestamp.so /mosquitto/plugins/mosquitto_ingress_timestamp.so
