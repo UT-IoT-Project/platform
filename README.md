@@ -77,3 +77,16 @@ uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
 or room absent from the database return HTTP 404. The HTTP server currently
 has no application routes, so the documented readings route remains
 unimplemented.
+
+## Raspi
+ssh busy@busy-raspi
+docker compose up -d
+docker compose down
+docker ps
+
+./insert_mqtt.sh -b gui-test -r 101 -t 41.5 -H 44 -c 670 -p pir1=1,pir2=8
+
+./read_mqtt.sh live
+./read_mqtt.sh live -b gui-test -n 5                                                  # one building, stop after 5
+./read_mqtt.sh history -b gui-test -r 101 -s 30m                                      # stored readings, newest first
+./read_mqtt.sh history --pir -s 2h --format csv                                       # PIR readings
