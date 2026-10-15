@@ -150,7 +150,7 @@ This module is scaffolding, not a completed API:
   HTTP server.
 - `internal/driver/http/server.go` configures Echo middleware but currently
   registers no application routes.
-- `Dockerfile` packages the backend. `docker-compose.yml` defines backend,
+- `Dockerfile.webserver` packages the backend. `docker-compose.yml` defines backend,
   Mosquitto, InfluxDB 3 Core, and Telegraf services. The derived Mosquitto
   image loads the incoming-message timestamp plugin. Telegraf configuration
   writes telemetry into separate room and PIR measurements. Local InfluxDB

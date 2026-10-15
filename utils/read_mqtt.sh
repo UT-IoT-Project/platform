@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Read sensor messages: "live" from the MQTT broker, "history" from InfluxDB.
 set -euo pipefail
-cd "$(dirname "$0")"  # so the docker compose fallback finds docker-compose.yml
+cd "$(dirname "$0")/.."  # so the docker compose fallback finds docker-compose.yml
 
 MQTT_HOST=${MQTT_HOST:-127.0.0.1}
 MQTT_PORT=${MQTT_PORT:-1883}
@@ -11,8 +11,8 @@ INFLUX_DB=${INFLUX_DB:-busyness_sensing}
 usage() {
   cat <<'EOF'
 Usage:
-  ./mqtt-read.sh live    [-b BUILDING] [-r ROOM] [-n COUNT]
-  ./mqtt-read.sh history [-b BUILDING] [-r ROOM] [-s SINCE] [-n LIMIT] [--pir] [--format FMT]
+  ./utils/read_mqtt.sh live    [-b BUILDING] [-r ROOM] [-n COUNT]
+  ./utils/read_mqtt.sh history [-b BUILDING] [-r ROOM] [-s SINCE] [-n LIMIT] [--pir] [--format FMT]
 
 live     Streams messages from the MQTT broker until Ctrl-C (or COUNT messages).
          Topic filter is sensors/<building|+>/<room|+>. Includes messages from
@@ -34,10 +34,10 @@ Env: MQTT_HOST (127.0.0.1), MQTT_PORT (1883), MQTT_USER, MQTT_PASS,
      INFLUXDB3_AUTH_TOKEN (only if InfluxDB auth is enabled)
 
 Examples:
-  ./mqtt-read.sh live
-  ./mqtt-read.sh live -b gui-test
-  ./mqtt-read.sh history -b gui-test -r 101 -s 30m -n 10
-  ./mqtt-read.sh history --pir -s 2h --format csv
+  ./utils/read_mqtt.sh live
+  ./utils/read_mqtt.sh live -b gui-test
+  ./utils/read_mqtt.sh history -b gui-test -r 101 -s 30m -n 10
+  ./utils/read_mqtt.sh history --pir -s 2h --format csv
 EOF
 }
 

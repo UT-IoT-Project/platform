@@ -21,9 +21,10 @@ backend will provide read APIs for those readings.
 ## Local services
 
 Start the stack from this directory with `docker compose up -d --build` so
-Compose builds the backend and the Mosquitto image with its timestamp plugin.
-The Mosquitto base image version is pinned in `Dockerfile.mosquitto`; the
-Telegraf and InfluxDB image versions are pinned in `docker-compose.yml`.
+Compose builds the backend from `Dockerfile.webserver` and the Mosquitto image
+with its timestamp plugin. The Mosquitto base image version is pinned in
+`Dockerfile.mosquitto`; Telegraf and InfluxDB image versions are pinned in
+`docker-compose.yml`.
 InfluxDB is published only on `127.0.0.1:8181`; its local development config
 disables authentication. Keep the stack on a trusted machine and enable
 authentication before exposing it to a network.
@@ -125,15 +126,19 @@ uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
 database return HTTP 404. The HTTP server currently has no application routes,
 so the documented readings route remains unimplemented.
 
-## Raspi
-ssh busy@busy-raspi
-docker compose up -d
+## Raspberry Pi helper commands
+
+Run these from the repository root on the Raspberry Pi:
+
+```sh
+docker compose up -d --build
 docker compose down
-docker ps
 
-./insert_mqtt.sh -b gui-test -r 101 -t 41.5 -H 44 -c 670 -p pir1=1,pir2=8
+./utils/insert_mqtt.sh -b BBB -r 212 --pressure 1013.25 -H 48.2 -t 22.5 \
+  --voc 0.42 --airresistance 12345.6 --mic-vol 0.18 --busy-level 2 \
+  -c 615.0 -p pir-1=1,pir-2=0
 
-./read_mqtt.sh live
-./read_mqtt.sh live -b gui-test -n 5                                                  # one building, stop after 5
-./read_mqtt.sh history -b gui-test -r 101 -s 30m                                      # stored readings, newest first
-./read_mqtt.sh history --pir -s 2h --format csv                                       # PIR readings
+./utils/read_mqtt.sh live -b BBB -n 5
+./utils/read_mqtt.sh history -b BBB -r 212 -s 30m
+./utils/read_mqtt.sh history --pir -s 2h --format csv
+```
