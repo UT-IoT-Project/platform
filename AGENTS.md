@@ -17,10 +17,10 @@ credentials.
 
 ```text
 ESP32 sensor nodes
-       │ publish JSON over MQTT
+       │ publish JSON without a timestamp over MQTT
        ▼
 Mosquitto broker (gateway)
-       │ Telegraf subscribes and parses messages
+       │ adds broker receipt timestamp; Telegraf subscribes and parses
        ▼
 InfluxDB (time-series storage)
        ▲ read/query through the InfluxDB adapter
@@ -32,8 +32,9 @@ Responsibilities:
 
 - **ESP32 firmware** is maintained in a separate repository. It samples sensors
   and publishes telemetry; it should not know about InfluxDB or the Go API.
-- **Mosquitto** routes MQTT publications to subscribers. It is a broker, not
-  the historical data store.
+- **Mosquitto** routes MQTT publications to subscribers. Its incoming-message
+  plugin adds a Unix millisecond `timestamp` to accepted sensor JSON at broker
+  receipt. It is a broker, not the historical data store.
 - **Telegraf** is the ingestion bridge. It subscribes to MQTT, parses and maps
   message/topic data, then writes points to InfluxDB. Keep ingestion out of the
   Go HTTP request path. Compose uses `telegraf:1.40.2-alpine` and the config at
@@ -55,8 +56,10 @@ The firmware repository is external to this backend repository. The currently
 agreed telemetry contract is:
 
 - Topic: `sensors/<buildingName>/<roomNumber>`.
-- No payload timestamp; Telegraf assigns the measurement time when it parses
-  the message.
+- No timestamp in the ESP32 payload. Mosquitto adds a top-level Unix
+  millisecond `timestamp` before subscriber delivery. Firmware must not send
+  this property; the plugin rejects sensor messages that already contain it,
+  as well as malformed sensor JSON.
 - Float32 `pressure`, `hum`, `temp`, `voc`, `airresistance`, and `mic_vol`, plus
   optional float32 `co2equivalent`.
 - `busy_level`: int8 (-128 through 127).
@@ -69,8 +72,12 @@ Numeric readings are fields. Keep PIR identity attached to the corresponding
 value; do not flatten anonymous array values. Reconfirm this mapping if the
 external firmware contract changes. The parser converts float32 source
 readings to its `float` field type and `busy_level` to `int`; it does not
-enforce float32 precision or the int8 range. Without a device timestamp, late
-deliveries are recorded at their parsing time rather than sampling time.
+enforce float32 precision or the int8 range. Both consumers use the broker
+`timestamp` as point time, including for messages queued while Telegraf is
+offline. The PIR array and each `id`/`value` pair remain unchanged. This is
+broker receipt time, not device sampling time: ESP32 buffering and network
+delay before receipt can make a reading appear later than it was sampled.
+Synchronize the broker clock.
 
 If multiple devices can publish for one room, include a stable `device_id` in
 the topic or payload so readings remain distinguishable. InfluxDB fields are
@@ -82,11 +89,13 @@ InfluxDB, use tags for string identifiers such as building, room, device, and
 PIR ID; use fields for numeric measurements. Keep timestamps as timestamps,
 not fields or tags.
 
-MQTT QoS 1 delivery can repeat messages. Without a device timestamp or event
-ID, Telegraf cannot distinguish a retransmission from a new sample, and a
-redelivery can create another point at a later time. Do not publish historical
-sensor readings as retained MQTT messages; retained messages represent the
-latest value on a topic, not a reading history.
+MQTT QoS 1 delivery can repeat messages. A queued subscriber redelivery keeps
+the timestamp already in its payload, while a repeated publication arriving
+at the broker may get a new timestamp. Without a device event ID, ingestion
+is not deduplicated. Millisecond collisions within a series can merge fields
+at one InfluxDB point. Do not publish historical sensor readings as retained
+MQTT messages; retained messages represent the latest value on a topic, not a
+reading history.
 
 Project decision: use MQTT QoS 1 for sensor telemetry. Configure firmware
 publishers and the Telegraf MQTT consumers to request QoS 1. Mosquitto's
@@ -142,7 +151,8 @@ This module is scaffolding, not a completed API:
 - `internal/driver/http/server.go` configures Echo middleware but currently
   registers no application routes.
 - `Dockerfile` packages the backend. `docker-compose.yml` defines backend,
-  Mosquitto, InfluxDB 3 Core, and Telegraf services. Telegraf configuration
+  Mosquitto, InfluxDB 3 Core, and Telegraf services. The derived Mosquitto
+  image loads the incoming-message timestamp plugin. Telegraf configuration
   writes telemetry into separate room and PIR measurements. Local InfluxDB
   data is stored under `volumes/influxdb3/data/`. Mosquitto and InfluxDB
   healthchecks gate Telegraf startup; Telegraf also has a process liveness

@@ -2,16 +2,22 @@ openapi: 3.1.0
 info:
   title: Busyness Sensing Readings API
   version: 1.0.0
-  description: Contract for retrieving selected sensor readings over a time range.
+  description: Planned contract for retrieving selected sensor readings over a time range; the HTTP route is not yet implemented.
 paths:
   /api/v1/readings/{building}/{roomNumber}:
     get:
       summary: Retrieve sensor readings
       description: >-
-        Returns readings for the selected building and room. Telegraf assigns
-        reading times when it parses MQTT messages; the payload has no device
-        timestamp. API timestamps use `YYYY-MM-DD HH:mm:ss.SSS` in the server's
-        configured local timezone.
+        Planned response for the selected building and room. ESP32 payloads
+        have no timestamp. Mosquitto adds a Unix millisecond timestamp at
+        broker receipt, and Telegraf uses it as the time of room and PIR
+        points, including messages queued while Telegraf is offline. This is
+        not device sampling time; ESP32 buffering and network delay before
+        broker receipt are not represented. Broker clock accuracy affects
+        these times. QoS 1 duplicates are not deduplicated, and millisecond
+        collisions may merge points in a series. The planned API formats
+        timestamps as `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured
+        local timezone.
         Supply one `sensors` query parameter per requested sensor. For
         example:
         `/api/v1/readings/zilverling/Z2402?start_time=2026-10-14%2010:00:00.000&end_time=2026-10-14%2011:00:00.000&sensors=PIR&sensors=temp`.

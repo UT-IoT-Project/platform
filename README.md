@@ -20,11 +20,13 @@ backend will provide read APIs for those readings.
 
 ## Local services
 
-Start the stack from this directory with `docker compose up -d`. Service image
-versions are pinned in `docker-compose.yml`. InfluxDB is published only on
-`127.0.0.1:8181`; its local development config disables authentication. Keep
-the stack on a trusted machine and enable authentication before exposing it to
-a network.
+Start the stack from this directory with `docker compose up -d --build` so
+Compose builds the backend and the Mosquitto image with its timestamp plugin.
+The Mosquitto base image version is pinned in `Dockerfile.mosquitto`; the
+Telegraf and InfluxDB image versions are pinned in `docker-compose.yml`.
+InfluxDB is published only on `127.0.0.1:8181`; its local development config
+disables authentication. Keep the stack on a trusted machine and enable
+authentication before exposing it to a network.
 
 Compose waits for Mosquitto and InfluxDB healthchecks to pass before starting
 Telegraf. The Mosquitto check only connects and subscribes to a dedicated
@@ -38,10 +40,13 @@ Create the InfluxDB database before Telegraf can store readings:
 docker compose exec influxdb3 influxdb3 create database busyness_sensing
 ```
 
+Run `sh tests/mosquitto_ingress_timestamp.sh` from this directory to build an
+isolated broker image and check timestamping, offline delivery, and payload
+validation.
+
 Telegraf subscribes to `sensors/<buildingName>/<roomNumber>` at QoS 1. For
 example, Building BBB, room 212 publishes to `sensors/BBB/212`. The ESP32
-payload does not include a timestamp; Telegraf timestamps readings when it
-parses the message. A payload looks like this:
+payload has no timestamp. A payload published by the ESP32 looks like this:
 
 ```json
 {
@@ -59,6 +64,17 @@ parses the message. A payload looks like this:
   ]
 }
 ```
+
+Mosquitto's incoming-message plugin adds a top-level `timestamp` containing
+Unix milliseconds when the broker receives an accepted sensor publication.
+For example, the JSON delivered to Telegraf has the same readings and PIR
+array, plus `"timestamp": 1792066530250`. The plugin rejects malformed sensor
+JSON and sensor payloads that already contain `timestamp`. Both Telegraf JSON
+v2 consumers use this value as the InfluxDB point time, including when a
+message waits in the broker while Telegraf is offline. The timestamp is the
+broker receipt time, not the ESP32 sampling time: buffering on the ESP32 and
+network delay before broker receipt are not measured. Keep the broker clock
+synchronized for useful times.
 
 `pressure`, `hum`, `temp`, `co2equivalent`, `voc`, `airresistance`, and
 `mic_vol` are float32 values from the ESP32; `co2equivalent` is optional.
@@ -78,8 +94,11 @@ is written as its own point so its ID remains attached to the numeric value.
 Service config lives in `configs/influxdb3.env` and
 `configs/telegraf.conf`. Set
 `INFLUXDB3_AUTH_TOKEN` in the environment if InfluxDB authentication is enabled.
-Because the payload has no device timestamp, a QoS 1 redelivery can create
-another point at a later time; ingestion is not deduplicated.
+QoS 1 can deliver the same publication more than once. A queued subscriber
+redelivery retains the enriched payload and its timestamp; a repeated
+publication reaching the broker may receive another timestamp. Ingestion is
+not deduplicated. Millisecond precision can also give distinct readings the
+same series and timestamp, so InfluxDB may merge their fields.
 
 Example SQL for readings from the past hour in Building BBB, room 212:
 
