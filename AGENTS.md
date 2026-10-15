@@ -55,17 +55,22 @@ The firmware repository is external to this backend repository. The currently
 agreed telemetry contract is:
 
 - Topic: `sensors/<buildingName>/<roomNumber>`.
-- `timestamp`: Unix seconds, used as the measurement timestamp.
-- Numeric `temprature` and `humidity`, plus optional numeric `co2`.
-- `PIRs`: array entries with stable `id` and numeric `value` properties.
+- No payload timestamp; Telegraf assigns the measurement time when it parses
+  the message.
+- Float32 `pressure`, `hum`, `temp`, `voc`, `airresistance`, and `mic_vol`, plus
+  optional float32 `co2equivalent`.
+- `busy_level`: int8 (-128 through 127).
+- `PIRs`: array entries with stable string `id` and numeric `value` properties.
 
 The starter Telegraf config uses separate MQTT consumers for room readings and
 PIR readings. It writes `room_telemetry` points with `building` and `room`
 tags, and `pir_reading` points with `building`, `room`, and `pir_id` tags.
 Numeric readings are fields. Keep PIR identity attached to the corresponding
 value; do not flatten anonymous array values. Reconfirm this mapping if the
-external firmware contract changes. Consider recording a separate gateway
-receipt time if late or clock-skewed readings need diagnosis.
+external firmware contract changes. The parser converts float32 source
+readings to its `float` field type and `busy_level` to `int`; it does not
+enforce float32 precision or the int8 range. Without a device timestamp, late
+deliveries are recorded at their parsing time rather than sampling time.
 
 If multiple devices can publish for one room, include a stable `device_id` in
 the topic or payload so readings remain distinguishable. InfluxDB fields are
@@ -77,19 +82,18 @@ InfluxDB, use tags for string identifiers such as building, room, device, and
 PIR ID; use fields for numeric measurements. Keep timestamps as timestamps,
 not fields or tags.
 
-MQTT QoS 1 delivery can repeat messages. Ingestion mappings should make
-retransmission behavior deliberate and retain enough timestamp precision to
-distinguish real samples. Do not publish historical sensor readings as retained
-MQTT messages; retained messages represent the latest value on a topic, not a
-reading history.
+MQTT QoS 1 delivery can repeat messages. Without a device timestamp or event
+ID, Telegraf cannot distinguish a retransmission from a new sample, and a
+redelivery can create another point at a later time. Do not publish historical
+sensor readings as retained MQTT messages; retained messages represent the
+latest value on a topic, not a reading history.
 
 Project decision: use MQTT QoS 1 for sensor telemetry. Configure firmware
 publishers and the Telegraf MQTT consumers to request QoS 1. Mosquitto's
 `max_qos 1` caps the listener at QoS 1, but does not force clients to use QoS 1;
 QoS 0 remains allowed. The Telegraf consumers use stable client IDs and
 persistent sessions so messages can be queued while they are offline. QoS 1
-can redeliver messages, so mappings use the same measurements, stable tags,
-and device measurement timestamp to make writes idempotent.
+can redeliver messages; the current contract does not make writes idempotent.
 The current topic does not identify a device. If multiple devices can publish
 to the same room, update the agreed topic or payload to include a stable
 `device_id` before relying on device-level readings.
