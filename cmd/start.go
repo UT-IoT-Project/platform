@@ -7,6 +7,7 @@ import (
 
 	"github.com/jouleion/busyness-sensing/backend/internal/app/config"
 	"github.com/jouleion/busyness-sensing/backend/internal/app/log"
+	"github.com/jouleion/busyness-sensing/backend/internal/driven/database/influxdb"
 	"github.com/jouleion/busyness-sensing/backend/internal/driver/http"
 )
 
@@ -21,6 +22,11 @@ var startCmd = &cobra.Command{
 		}
 
 		log.Init()
+		client, err := influxdb.Init()
+		if err != nil {
+			return fmt.Errorf("initialize database: %w", err)
+		}
+		defer client.Close()
 		return http.NewServer().Start()
 	},
 }
