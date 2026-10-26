@@ -42,8 +42,8 @@ Responsibilities:
   health checks pass.
 - **InfluxDB** stores timestamped readings and serves time-range queries to the
   Go API. Compose uses InfluxDB 3 Core (`influxdb:3.11-core`) with settings in
-  `configs/influxdb3.env`; the Go adapter and its client/query API still need
-  to be implemented and verified against this version.
+  `configs/influxdb3.env`; the Go adapter initializes the SDK and verifies server health at startup;
+  its query API still needs implementation and verification against this version.
 - **Go backend** exposes a controlled HTTP API and owns request validation,
   authorization, query limits, response formats, and application use cases. It
   reads from InfluxDB; Telegraf owns MQTT ingestion.
@@ -146,8 +146,9 @@ on HTTP details. The adapter should not decide public response formats.
 
 This module is scaffolding, not a completed API:
 
-- `cmd/start.go` loads configuration, initializes logging, and starts the Echo
-  HTTP server.
+- `cmd/start.go` loads configuration, initializes logging and the InfluxDB
+  client, verifies database server health, and starts the Echo HTTP server.
+  It closes the database client when the server returns.
 - `internal/driver/http/server.go` configures Echo middleware but currently
   registers no application routes.
 - `Dockerfile.webserver` packages the backend. `docker-compose.yml` defines backend,
@@ -155,12 +156,15 @@ This module is scaffolding, not a completed API:
   image loads the incoming-message timestamp plugin. Telegraf configuration
   writes telemetry into separate room and PIR measurements. Local InfluxDB
   data is stored under `volumes/influxdb3/data/`. Mosquitto and InfluxDB
-  healthchecks gate Telegraf startup; Telegraf also has a process liveness
+  healthchecks gate Telegraf startup; InfluxDB health also gates backend startup; Telegraf also has a process liveness
   healthcheck.
 - `internal/core/domain/`, `internal/core/port/`, and
   `internal/core/service/` contain package placeholders only.
-- `internal/driven/database/influxdb/` is a package placeholder; there is no
-  InfluxDB client, connection setup, repository, or query yet.
+- `internal/driven/database/influxdb/` initializes the InfluxDB SDK client and
+  checks `/ping` through that client with a five-second timeout. Compose uses
+  `/health` for its separate InfluxDB healthcheck. There is no repository or query
+  implementation yet. Server health does not verify database existence or
+  query authorization.
 - There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server
   and InfluxDB adapter remain scaffolding.
 
@@ -193,11 +197,14 @@ safe implementation plan before editing.
   to the current working directory. `go run . start --config <path>` selects a
   different file.
 - Startup is currently `cmd.Execute()` → config load → logger initialization
-  → HTTP server start.
+  → InfluxDB client initialization and health check → HTTP server start.
 - Keep credentials out of committed YAML. Add environment/secret-backed
   configuration for InfluxDB and MQTT-related credentials if the backend ever
   needs them; the backend should not need MQTT credentials for read-only API
   queries.
+- Set `influxdb.host` to the InfluxDB origin/root URL with no path prefix; the SDK
+  resolves the startup availability check to root-level `/ping`. The supplied
+  Compose host `http://influxdb3:8181` already meets this requirement.
 - The local InfluxDB Compose config disables authentication and binds its host
   port to loopback. Enable authentication and keep its token in the environment
   before exposing the service beyond the local development machine.

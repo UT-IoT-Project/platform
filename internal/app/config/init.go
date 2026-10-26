@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	App    AppConfig
-	Logger LoggerConfig
-	HTTP   HTTPConfig
+	App      AppConfig
+	Logger   LoggerConfig
+	HTTP     HTTPConfig
+	InfluxDB InfluxDBConfig
 }
 
 var C Config
@@ -35,6 +36,11 @@ func Init(path string) error {
 	c.HTTP, err = parseHTTPConfig(v)
 	if err != nil {
 		return fmt.Errorf("http config: %w", err)
+	}
+
+	c.InfluxDB, err = parseInfluxDBConfig(v)
+	if err != nil {
+		return fmt.Errorf("influxdb config: %w", err)
 	}
 
 	C = c

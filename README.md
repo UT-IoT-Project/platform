@@ -16,7 +16,7 @@ backend will provide read APIs for those readings.
 | `internal/core/port/` | Interfaces for services and adapters |
 | `internal/core/service/` | Application use cases |
 | `internal/driver/http/` | HTTP API adapter and request types |
-| `internal/driven/database/influxdb/` | InfluxDB adapter placeholder |
+| `internal/driven/database/influxdb/` | InfluxDB client initialization and startup health check |
 
 ## Local services
 
@@ -30,7 +30,7 @@ disables authentication. Keep the stack on a trusted machine and enable
 authentication before exposing it to a network.
 
 Compose waits for Mosquitto and InfluxDB healthchecks to pass before starting
-Telegraf. The Mosquitto check only connects and subscribes to a dedicated
+Telegraf, and waits for InfluxDB before starting the backend. The Mosquitto check only connects and subscribes to a dedicated
 health topic; it publishes no MQTT message. InfluxDB is checked with its
 `/health` endpoint. Telegraf's healthcheck confirms its process is alive, not
 that readings are currently arriving or being stored.
@@ -117,7 +117,22 @@ range.
 
 ## Backend
 
-Run the backend alone with `go run . start`. The OpenAPI contract is
+The backend uses the SDK client to check InfluxDB `/ping` with a five-second
+timeout before starting HTTP and closes its client when the server stops. Compose config uses
+`http://influxdb3:8181`, the InfluxDB service hostname inside the Compose network.
+Set `influxdb.host` to the InfluxDB origin/root URL with no path prefix: the SDK
+resolves the availability check to root-level `/ping`. The supplied Compose
+configuration already meets this requirement.
+For a backend running on your host, start InfluxDB with
+`docker compose up -d influxdb3`, copy `configs/configs.webserver.yml` to a local
+config, change `influxdb.host` to `http://127.0.0.1:8181`, and run
+`go run . start --config /path/to/local.yml`. The SDK requires a nonempty token;
+the supplied `local-dev-token` is a placeholder for the local server with
+authentication disabled. Set a real token in your local configuration when
+authentication is enabled. A successful health check confirms server health,
+not that the configured database exists or that queries are authorized.
+
+The OpenAPI contract is
 documented in [`docs/api/openapi.yaml`](docs/api/openapi.yaml). The contract
 uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
 `end_time`, and repeated `sensors` query parameters. Supported sensor names are
