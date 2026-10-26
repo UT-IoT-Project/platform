@@ -30,27 +30,33 @@ func Init() (*influxdb3.Client, error) {
 	if err != nil {
 		return nil, errors.New("initialize influxdb client: invalid client configuration")
 	}
-	healthy := false
-	defer func() {
-		if !healthy {
-			_ = client.Close()
-		}
-	}()
-	host.Path = strings.TrimRight(host.Path, "/") + "/health"
-	request, err := http.NewRequest(http.MethodGet, host.String(), nil)
-	if err != nil {
-		return nil, errors.New("create influxdb health request: invalid host")
+	if err := IsHealthy(c.Host, c.Token); err != nil {
+		_ = client.Close()
+		return nil, err
 	}
-	request.Header.Set("Authorization", "Bearer "+c.Token)
+	return client, nil
+}
+
+// IsHealthy verifies server health with an authenticated, bounded HTTP request.
+func IsHealthy(host, token string) error {
+	endpoint, err := url.Parse(host)
+	if err != nil {
+		return errors.New("create influxdb health request: invalid host")
+	}
+	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/health"
+	request, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return errors.New("create influxdb health request: invalid host")
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
 	healthClient := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := healthClient.Do(request)
 	if err != nil {
-		return nil, errors.New("influxdb health check failed: request could not complete")
+		return errors.New("influxdb health check failed: request could not complete")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("influxdb health check failed: HTTP %d", response.StatusCode)
+		return fmt.Errorf("influxdb health check failed: HTTP %d", response.StatusCode)
 	}
-	healthy = true
-	return client, nil
+	return nil
 }

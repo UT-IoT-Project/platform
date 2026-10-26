@@ -127,3 +127,54 @@ func TestInitHealthTransportFailure(t *testing.T) {
 		t.Fatal("transport error exposes credentials")
 	}
 }
+
+func TestIsHealthy(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/prefix/health" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+				if r.Header.Get("Authorization") != "Bearer secret-token" {
+					t.Error("missing authorization")
+				}
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte("secret-token"))
+			}))
+			defer server.Close()
+			err := IsHealthy(server.URL+"/prefix/", "secret-token")
+			if status == http.StatusOK {
+				if err != nil {
+					t.Fatalf("IsHealthy() = %v; want no error", err)
+				}
+			} else if err == nil || err.Error() != "influxdb health check failed: HTTP 503" {
+				t.Fatalf("IsHealthy() = %v; want HTTP 503 error", err)
+			}
+		})
+	}
+}
+
+func TestIsHealthyRejectsRedirect(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health" {
+			t.Error("followed health redirect")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Redirect(w, r, "/secret-token", http.StatusFound)
+	}))
+	defer server.Close()
+	if err := IsHealthy(server.URL, "secret-token"); err == nil || !strings.Contains(err.Error(), "HTTP 302") || strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("IsHealthy() = %v; want sanitized redirect failure", err)
+	}
+}
+
+func TestIsHealthyTransportFailure(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("unexpected successful transport")
+	}))
+	defer server.Close()
+	if err := IsHealthy(server.URL, "secret-token"); err == nil || strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("IsHealthy() = %v; want sanitized transport failure", err)
+	}
+}
