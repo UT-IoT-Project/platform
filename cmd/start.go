@@ -25,7 +25,7 @@ var startCmd = &cobra.Command{
 		client, err := influxdb.Init()
 		if err != nil {
 			log.Logger.Fatal().Err(err).Msg("failed to initialize database")
-			return fmt.Errorf("initialize database: %w", err)
+			return err
 		}
 		defer client.Close()
 		return http.NewServer().Start()
