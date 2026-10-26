@@ -1,0 +1,12 @@
+package domain
+
+type SensorType int
+
+const (
+	PIR_SENSOR SensorType = iota
+	PRESSURE_SENSOR
+	HUMIDITY_SENSOR
+	TEMPRATURE_SENSOR
+	CO2EQUVALENT_SENSOR
+	BUSY_LEVEL
+)
