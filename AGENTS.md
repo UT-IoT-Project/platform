@@ -157,10 +157,12 @@ This module is scaffolding, not a completed API:
   data is stored under `volumes/influxdb3/data/`. Mosquitto and InfluxDB
   healthchecks gate Telegraf startup; Telegraf also has a process liveness
   healthcheck.
-- `internal/core/domain/`, `internal/core/port/`, and
-  `internal/core/service/` contain package placeholders only.
-- `internal/driven/database/influxdb/` is a package placeholder; there is no
-  InfluxDB client, connection setup, repository, or query yet.
+- `internal/core/domain/` defines sensor types and timestamped scalar and PIR
+  reading models. `internal/core/port/` declares batch reading query/result
+  types and service/repository interfaces; implementations do not exist yet.
+  Core services remain unimplemented.
+- The InfluxDB adapter remains unimplemented; there is no InfluxDB client,
+  connection setup, repository, or query yet.
 - There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server
   and InfluxDB adapter remain scaffolding.
 
