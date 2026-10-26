@@ -202,6 +202,9 @@ safe implementation plan before editing.
   configuration for InfluxDB and MQTT-related credentials if the backend ever
   needs them; the backend should not need MQTT credentials for read-only API
   queries.
+- Set `influxdb.host` to the InfluxDB origin/root URL with no path prefix; the SDK
+  resolves the startup availability check to root-level `/ping`. The supplied
+  Compose host `http://influxdb3:8181` already meets this requirement.
 - The local InfluxDB Compose config disables authentication and binds its host
   port to loopback. Enable authentication and keep its token in the environment
   before exposing the service beyond the local development machine.

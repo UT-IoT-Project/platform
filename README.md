@@ -120,6 +120,9 @@ range.
 The backend uses the SDK client to check InfluxDB `/ping` with a five-second
 timeout before starting HTTP and closes its client when the server stops. Compose config uses
 `http://influxdb3:8181`, the InfluxDB service hostname inside the Compose network.
+Set `influxdb.host` to the InfluxDB origin/root URL with no path prefix: the SDK
+resolves the availability check to root-level `/ping`. The supplied Compose
+configuration already meets this requirement.
 For a backend running on your host, start InfluxDB with
 `docker compose up -d influxdb3`, copy `configs/configs.webserver.yml` to a local
 config, change `influxdb.host` to `http://127.0.0.1:8181`, and run

@@ -2,7 +2,11 @@
 
 ## Intent
 
-Separate client construction from health checking without changing startup behavior.
+Separate client construction from health checking while preserving the startup
+availability gate. The SDK check uses root-level `/ping` instead of `/health`;
+configure the backend host as the InfluxDB origin/root URL with no path prefix.
+The supplied Compose host already meets this requirement, and Compose retains
+its separate `/health` check.
 
 ## Design
 
