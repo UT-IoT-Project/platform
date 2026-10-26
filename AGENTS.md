@@ -161,7 +161,8 @@ This module is scaffolding, not a completed API:
 - `internal/core/domain/`, `internal/core/port/`, and
   `internal/core/service/` contain package placeholders only.
 - `internal/driven/database/influxdb/` initializes the InfluxDB SDK client and
-  checks `/health` with a five-second timeout. There is no repository or query
+  checks `/ping` through that client with a five-second timeout. Compose uses
+  `/health` for its separate InfluxDB healthcheck. There is no repository or query
   implementation yet. Server health does not verify database existence or
   query authorization.
 - There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server

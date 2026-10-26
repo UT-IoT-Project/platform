@@ -26,37 +26,35 @@ func Init() (*influxdb3.Client, error) {
 	if err != nil || (host.Scheme != "http" && host.Scheme != "https") || host.Host == "" || host.User != nil || host.RawQuery != "" || host.Fragment != "" {
 		return nil, errors.New("influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment")
 	}
-	client, err := influxdb3.New(influxdb3.ClientConfig{Host: c.Host, Database: c.Database, Token: c.Token, AuthScheme: "Bearer"})
+	client, err := influxdb3.New(influxdb3.ClientConfig{
+		Host: c.Host, Database: c.Database, Token: c.Token, AuthScheme: "Bearer",
+		HTTPClient: &http.Client{
+			Timeout:       5 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+	})
 	if err != nil {
 		return nil, errors.New("initialize influxdb client: invalid client configuration")
 	}
-	if err := IsHealthy(c.Host, c.Token); err != nil {
+	if err := IsHealthy(client); err != nil {
 		_ = client.Close()
 		return nil, err
 	}
 	return client, nil
 }
 
-// IsHealthy verifies server health with an authenticated, bounded HTTP request.
-func IsHealthy(host, token string) error {
-	endpoint, err := url.Parse(host)
-	if err != nil {
-		return errors.New("create influxdb health request: invalid host")
+// IsHealthy verifies server availability through the SDK's authenticated /ping request.
+// The caller configures the client's HTTP timeout and redirect policy.
+func IsHealthy(client *influxdb3.Client) error {
+	if client == nil {
+		return errors.New("influxdb health check failed: client is nil")
 	}
-	endpoint.Path = strings.TrimRight(endpoint.Path, "/") + "/health"
-	request, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return errors.New("create influxdb health request: invalid host")
-	}
-	request.Header.Set("Authorization", "Bearer "+token)
-	healthClient := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	response, err := healthClient.Do(request)
-	if err != nil {
+	if _, err := client.GetServerVersion(); err != nil {
+		var serverError *influxdb3.ServerError
+		if errors.As(err, &serverError) {
+			return fmt.Errorf("influxdb health check failed: HTTP %d", serverError.StatusCode)
+		}
 		return errors.New("influxdb health check failed: request could not complete")
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("influxdb health check failed: HTTP %d", response.StatusCode)
 	}
 	return nil
 }

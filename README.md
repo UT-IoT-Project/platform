@@ -117,8 +117,8 @@ range.
 
 ## Backend
 
-The backend checks InfluxDB `/health` with a five-second timeout before starting
-HTTP and closes its client when the server stops. Compose config uses
+The backend uses the SDK client to check InfluxDB `/ping` with a five-second
+timeout before starting HTTP and closes its client when the server stops. Compose config uses
 `http://influxdb3:8181`, the InfluxDB service hostname inside the Compose network.
 For a backend running on your host, start InfluxDB with
 `docker compose up -d influxdb3`, copy `configs/configs.webserver.yml` to a local

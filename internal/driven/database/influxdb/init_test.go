@@ -5,29 +5,32 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/InfluxCommunity/influxdb3-go/v2/influxdb3"
 	"github.com/jouleion/busyness-sensing/backend/internal/app/config"
 )
 
 func TestInitHealth(t *testing.T) {
 	original := config.C
 	t.Cleanup(func() { config.C = original })
-	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
+	for _, status := range []int{http.StatusOK, http.StatusNoContent, http.StatusServiceUnavailable} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/health" {
+				if r.Method != http.MethodGet || r.URL.Path != "/ping" {
 					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				}
 				if r.Header.Get("Authorization") != "Bearer secret-token" {
 					t.Error("missing authorization")
 				}
+				w.Header().Set("X-Influxdb-Version", "3.11.0")
 				w.WriteHeader(status)
 				_, _ = w.Write([]byte("secret-token"))
 			}))
 			defer server.Close()
 			config.C.InfluxDB = config.InfluxDBConfig{Host: server.URL, Database: "test", Token: "secret-token"}
 			client, err := Init()
-			if status == http.StatusOK {
+			if status < http.StatusMultipleChoices {
 				if err != nil || client == nil {
 					t.Fatalf("Init() = %v, %v; want client and no error", client, err)
 				}
@@ -94,7 +97,7 @@ func TestInitRejectsHealthRedirect(t *testing.T) {
 	original := config.C
 	t.Cleanup(func() { config.C = original })
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/health" {
+		if r.URL.Path != "/ping" {
 			t.Error("followed health redirect")
 			w.WriteHeader(http.StatusOK)
 			return
@@ -129,21 +132,23 @@ func TestInitHealthTransportFailure(t *testing.T) {
 }
 
 func TestIsHealthy(t *testing.T) {
-	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
+	for _, status := range []int{http.StatusOK, http.StatusNoContent, http.StatusServiceUnavailable} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet || r.URL.Path != "/prefix/health" {
+				if r.Method != http.MethodGet || r.URL.Path != "/ping" {
 					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 				}
 				if r.Header.Get("Authorization") != "Bearer secret-token" {
 					t.Error("missing authorization")
 				}
+				w.Header().Set("X-Influxdb-Version", "3.11.0")
 				w.WriteHeader(status)
 				_, _ = w.Write([]byte("secret-token"))
 			}))
 			defer server.Close()
-			err := IsHealthy(server.URL+"/prefix/", "secret-token")
-			if status == http.StatusOK {
+			client := newHealthTestClient(t, server.URL)
+			err := IsHealthy(client)
+			if status < http.StatusMultipleChoices {
 				if err != nil {
 					t.Fatalf("IsHealthy() = %v; want no error", err)
 				}
@@ -156,7 +161,7 @@ func TestIsHealthy(t *testing.T) {
 
 func TestIsHealthyRejectsRedirect(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/health" {
+		if r.URL.Path != "/ping" {
 			t.Error("followed health redirect")
 			w.WriteHeader(http.StatusOK)
 			return
@@ -164,7 +169,7 @@ func TestIsHealthyRejectsRedirect(t *testing.T) {
 		http.Redirect(w, r, "/secret-token", http.StatusFound)
 	}))
 	defer server.Close()
-	if err := IsHealthy(server.URL, "secret-token"); err == nil || !strings.Contains(err.Error(), "HTTP 302") || strings.Contains(err.Error(), "secret-token") {
+	if err := IsHealthy(newHealthTestClient(t, server.URL)); err == nil || !strings.Contains(err.Error(), "HTTP 302") || strings.Contains(err.Error(), "secret-token") {
 		t.Fatalf("IsHealthy() = %v; want sanitized redirect failure", err)
 	}
 }
@@ -174,7 +179,23 @@ func TestIsHealthyTransportFailure(t *testing.T) {
 		t.Error("unexpected successful transport")
 	}))
 	defer server.Close()
-	if err := IsHealthy(server.URL, "secret-token"); err == nil || strings.Contains(err.Error(), "secret-token") {
+	if err := IsHealthy(newHealthTestClient(t, server.URL)); err == nil || strings.Contains(err.Error(), "secret-token") {
 		t.Fatalf("IsHealthy() = %v; want sanitized transport failure", err)
+	}
+}
+
+func newHealthTestClient(t *testing.T, host string) *influxdb3.Client {
+	t.Helper()
+	client, err := influxdb3.New(influxdb3.ClientConfig{Host: host, Database: "test", Token: "secret-token", AuthScheme: "Bearer", HTTPClient: &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	return client
+}
+
+func TestIsHealthyNilClient(t *testing.T) {
+	if err := IsHealthy(nil); err == nil {
+		t.Fatal("IsHealthy(nil) = nil; want error")
 	}
 }
