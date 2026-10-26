@@ -196,7 +196,7 @@ safe implementation plan before editing.
   to the current working directory. `go run . start --config <path>` selects a
   different file.
 - Startup is currently `cmd.Execute()` → config load → logger initialization
-  → HTTP server start.
+  → InfluxDB client initialization and health check → HTTP server start.
 - Keep credentials out of committed YAML. Add environment/secret-backed
   configuration for InfluxDB and MQTT-related credentials if the backend ever
   needs them; the backend should not need MQTT credentials for read-only API
