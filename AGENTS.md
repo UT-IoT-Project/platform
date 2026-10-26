@@ -158,8 +158,10 @@ This module is scaffolding, not a completed API:
   data is stored under `volumes/influxdb3/data/`. Mosquitto and InfluxDB
   healthchecks gate Telegraf startup; InfluxDB health also gates backend startup; Telegraf also has a process liveness
   healthcheck.
-- `internal/core/domain/`, `internal/core/port/`, and
-  `internal/core/service/` contain package placeholders only.
+- `internal/core/domain/` defines sensor types and timestamped scalar and PIR
+  reading models. `internal/core/port/` declares batch reading query/result
+  types and service/repository interfaces; implementations do not exist yet.
+  Core services remain unimplemented.
 - `internal/driven/database/influxdb/` initializes the InfluxDB SDK client and
   checks `/ping` through that client with a five-second timeout. Compose uses
   `/health` for its separate InfluxDB healthcheck. There is no repository or query
