@@ -27,7 +27,7 @@ docker exec "$name" mosquitto_sub -h 127.0.0.1 \
 before=$(python3 -c 'import time; print(time.time_ns() // 1000000)')
 docker exec "$name" mosquitto_pub -h 127.0.0.1 -q 1 \
   -t sensors/BBB/212 \
-  -m '{"pressure":1013.25,"hum":48.2,"temp":22.5,"voc":0.42,"airresistance":12345.6,"mic_vol":0.18,"busy_level":2,"PIRs":[{"id":"pir-1","value":1},{"id":"pir-2","value":0}]}'
+  -m '{"pressure":1013.25,"humidity":48.2,"temperature":22.5,"voc":0.42,"iaq":12345.6,"mic_vol":0.18,"busy_level":2,"PIRs":[{"ID":"pir-1","value":1},{"ID":"pir-2","value":0}]}'
 sleep 2
 docker exec "$name" mosquitto_sub -h 127.0.0.1 \
   -i timestamp-test -c -q 1 -t sensors/BBB/212 -C 1 -W 5 >"$output"
@@ -45,8 +45,8 @@ assert isinstance(timestamp, int), timestamp
 assert int(sys.argv[2]) <= timestamp < int(sys.argv[3]) - 1000, timestamp
 assert event["pressure"] == 1013.25
 assert event["PIRs"] == [
-    {"id": "pir-1", "value": 1},
-    {"id": "pir-2", "value": 0},
+    {"ID": "pir-1", "value": 1},
+    {"ID": "pir-2", "value": 0},
 ]
 print("Broker timestamp was set before offline delivery; sensor data survived.")
 PY
@@ -54,8 +54,8 @@ PY
 # Neither invalid JSON nor a publisher-supplied timestamp may reach a subscriber.
 for payload in \
   '' \
-  '{"temp":22} trailing' \
-  '{"temp":22,"timestamp":1}'; do
+  '{"temperature":22} trailing' \
+  '{"temperature":22,"timestamp":1}'; do
   docker exec "$name" mosquitto_pub -h 127.0.0.1 -q 1 \
     -t sensors/BBB/212 -m "$payload" >/dev/null 2>&1 || true
   if docker exec "$name" mosquitto_sub -h 127.0.0.1 \

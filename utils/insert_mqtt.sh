@@ -14,16 +14,16 @@ Required (unless --raw is used):
   -b, --building NAME    topic becomes sensors/<building>/<room>
   -r, --room NAME
       --pressure N
-  -H, --hum N
-  -t, --temp N
+  -H, --humidity N
+  -t, --temperature N
       --voc N
-      --airresistance N
+      --iaq N
       --mic-vol N       sent as "mic_vol"
       --busy-level N    integer from -128 through 127
 
 Optional:
   -c, --co2equivalent N
-  -p, --pirs LIST        id=value pairs, e.g. pir1=0,pir2=1
+  -p, --pirs LIST        ID=value pairs, e.g. pir1=0,pir2=1
       --raw JSON         send this payload as-is instead of building one
       --topic TOPIC      override the topic (required with --raw if no -b/-r)
       --dry-run          print topic and payload, do not publish
@@ -32,7 +32,7 @@ Optional:
 Env: MQTT_HOST (127.0.0.1), MQTT_PORT (1883), MQTT_USER, MQTT_PASS
 
 Example:
-  ./utils/insert_mqtt.sh -b gui-test -r 101 --pressure 1013.25 -H 44 -t 21.5 --voc 0.42 --airresistance 12345.6 --mic-vol 0.18 --busy-level 2 -c 600 -p pir1=1,pir2=0
+  ./utils/insert_mqtt.sh -b gui-test -r 101 --pressure 1013.25 -H 44 -t 21.5 --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 -c 600 -p pir1=1,pir2=0
 EOF
 }
 
@@ -53,23 +53,23 @@ build_cmd() {
   fi
 }
 
-building="" room="" pressure="" hum="" temp="" co2equivalent="" voc="" airresistance="" mic_vol="" busy_level="" pirs="" raw="" topic="" dry_run=0
+building="" room="" pressure="" humidity="" temperature="" co2equivalent="" voc="" iaq="" mic_vol="" busy_level="" pirs="" raw="" topic="" dry_run=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) usage; exit 0 ;;
     --dry-run) dry_run=1; shift ;;
-    -b|--building|-r|--room|--pressure|-t|--temp|--temperature|-H|--hum|--humidity|-c|--co2equivalent|--voc|--airresistance|--mic-vol|--mic_vol|--busy-level|--busy_level|-p|--pirs|--raw|--topic)
+    -b|--building|-r|--room|--pressure|-t|--temperature|-H|--humidity|-c|--co2equivalent|--voc|--iaq|--mic-vol|--mic_vol|--busy-level|--busy_level|-p|--pirs|--raw|--topic)
       [[ $# -ge 2 ]] || die "$1 needs a value"
       case $1 in
         -b|--building) building=$2 ;;
         -r|--room) room=$2 ;;
         --pressure) pressure=$2 ;;
-        -t|--temp|--temperature) temp=$2 ;;
-        -H|--hum|--humidity) hum=$2 ;;
+        -t|--temperature) temperature=$2 ;;
+        -H|--humidity) humidity=$2 ;;
         -c|--co2equivalent) co2equivalent=$2 ;;
         --voc) voc=$2 ;;
-        --airresistance) airresistance=$2 ;;
+        --iaq) iaq=$2 ;;
         --mic-vol|--mic_vol) mic_vol=$2 ;;
         --busy-level|--busy_level) busy_level=$2 ;;
         -p|--pirs) pirs=$2 ;;
@@ -94,15 +94,15 @@ fi
 if [[ -n $raw ]]; then
   payload=$raw
 else
-  [[ -n $pressure && -n $hum && -n $temp && -n $voc && -n $airresistance && -n $mic_vol && -n $busy_level ]] ||
-    die "pressure, hum, temp, voc, airresistance, mic_vol, and busy_level are required (or use --raw)"
-  for reading in pressure hum temp voc airresistance mic_vol; do
+  [[ -n $pressure && -n $humidity && -n $temperature && -n $voc && -n $iaq && -n $mic_vol && -n $busy_level ]] ||
+    die "pressure, humidity, temperature, voc, iaq, mic_vol, and busy_level are required (or use --raw)"
+  for reading in pressure humidity temperature voc iaq mic_vol; do
     is_number "${!reading}" || die "$reading must be a number"
   done
   [[ $busy_level =~ ^-?(0|[1-9][0-9]{0,2})$ ]] && ((busy_level >= -128 && busy_level <= 127)) ||
     die "busy_level must be an integer from -128 through 127"
 
-  payload="{\"pressure\":$pressure,\"hum\":$hum,\"temp\":$temp,\"voc\":$voc,\"airresistance\":$airresistance,\"mic_vol\":$mic_vol,\"busy_level\":$busy_level"
+  payload="{\"pressure\":$pressure,\"humidity\":$humidity,\"temperature\":$temperature,\"voc\":$voc,\"iaq\":$iaq,\"mic_vol\":$mic_vol,\"busy_level\":$busy_level"
   if [[ -n $co2equivalent ]]; then
     is_number "$co2equivalent" || die "co2equivalent must be a number"
     payload+=",\"co2equivalent\":$co2equivalent"
@@ -114,10 +114,10 @@ else
     for item in "${pir_items[@]}"; do
       pir_id=${item%%=*}
       pir_value=${item#*=}
-      [[ $item == *=* ]] || die "PIR entries must look like id=value (got '$item')"
-      is_name "$pir_id" || die "invalid PIR id '$pir_id'"
+      [[ $item == *=* ]] || die "PIR entries must look like ID=value (got '$item')"
+      is_name "$pir_id" || die "invalid PIR ID '$pir_id'"
       is_number "$pir_value" || die "PIR value for '$pir_id' must be a number"
-      pir_json+="${pir_json:+,}{\"id\":\"$pir_id\",\"value\":$pir_value}"
+      pir_json+="${pir_json:+,}{\"ID\":\"$pir_id\",\"value\":$pir_value}"
     done
   fi
   payload+=",\"PIRs\":[$pir_json]}"

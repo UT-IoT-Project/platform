@@ -12,8 +12,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "utils" / "insert_mqtt.sh"
 READINGS = [
-    "-b", "BBB", "-r", "212", "--pressure", "1013.25", "--hum", "48.2",
-    "--temp", "22.5", "--voc", "0.42", "--airresistance", "12345.6",
+    "-b", "BBB", "-r", "212", "--pressure", "1013.25", "--humidity", "48.2",
+    "--temperature", "22.5", "--voc", "0.42", "--iaq", "12345.6",
     "--mic-vol", "0.18", "--busy-level", "2", "--pirs", "pir-1=1,pir-2=0",
 ]
 
@@ -32,12 +32,19 @@ class InsertMqttContractTest(unittest.TestCase):
         lines = result.stdout.splitlines()
         self.assertEqual(lines[0], "topic:   sensors/BBB/212")
         self.assertEqual(json.loads(lines[1].removeprefix("payload: ")), {
-            "pressure": 1013.25, "hum": 48.2, "temp": 22.5,
+            "pressure": 1013.25, "humidity": 48.2, "temperature": 22.5,
             "co2equivalent": 615.0, "voc": 0.42,
-            "airresistance": 12345.6, "mic_vol": 0.18,
+            "iaq": 12345.6, "mic_vol": 0.18,
             "busy_level": 2,
-            "PIRs": [{"id": "pir-1", "value": 1}, {"id": "pir-2", "value": 0}],
+            "PIRs": [{"ID": "pir-1", "value": 1}, {"ID": "pir-2", "value": 0}],
         })
+
+    def test_old_sensor_flags_are_rejected(self):
+        for flag in ("--temp", "--hum", "--airresistance"):
+            with self.subTest(flag=flag):
+                result = run_helper(*READINGS, flag, "1", "--dry-run")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f"unknown argument: {flag}", result.stderr)
 
     def test_optional_co2equivalent_can_be_omitted(self):
         result = run_helper(*READINGS, "--dry-run")
