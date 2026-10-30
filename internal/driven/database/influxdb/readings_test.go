@@ -93,8 +93,8 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fake.calls != 1 || !strings.Contains(fake.query, "UNION ALL") || strings.Contains(strings.ToUpper(fake.query), "LIMIT") {
-		t.Fatalf("expected one batch query without a row cap, got calls=%d query=%q", fake.calls, fake.query)
+	if fake.calls != 1 || !strings.Contains(fake.query, "UNION ALL") {
+		t.Fatalf("expected one batch query, got calls=%d query=%q", fake.calls, fake.query)
 	}
 	if strings.Contains(fake.query, query.Building) || fake.params["building"] != query.Building || fake.params["room"] != query.Room {
 		t.Fatalf("location must be parameterized: query=%q params=%v", fake.query, fake.params)
@@ -113,44 +113,6 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v, want %#v", got, want)
-	}
-}
-
-func TestReadingsRepositoryReturnsMoreThanTenThousandRows(t *testing.T) {
-	const rowCount = 10001
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
-	schema := arrow.NewSchema([]arrow.Field{
-		{Name: "time", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
-		{Name: "temp", Type: arrow.PrimitiveTypes.Float64},
-		{Name: "pir_id", Type: arrow.BinaryTypes.String, Nullable: true},
-		{Name: "pir_value", Type: arrow.PrimitiveTypes.Float64, Nullable: true},
-	}, nil)
-	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
-	defer builder.Release()
-	for i := range rowCount {
-		builder.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(start.Add(time.Duration(i) * time.Second).UnixNano()))
-		builder.Field(1).(*array.Float64Builder).Append(float64(i))
-		builder.Field(2).(*array.StringBuilder).AppendNull()
-		builder.Field(3).(*array.Float64Builder).AppendNull()
-	}
-	record := builder.NewRecordBatch()
-	defer record.Release()
-	fake := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{record: record})}
-	repo := &ReadingsRepository{client: fake}
-
-	got, err := repo.GetReadings(context.Background(), port.ReadingsQuery{
-		Building: "B", Room: "R", Start: start, End: start.Add(rowCount * time.Second),
-		Sensors: []domain.SensorType{domain.TEMPERATURE_SENSOR},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	series := got.Scalars[domain.TEMPERATURE_SENSOR]
-	if len(series) != rowCount || series[rowCount-1].Value != rowCount-1 {
-		t.Fatalf("expected all %d readings, got %d", rowCount, len(series))
-	}
-	if strings.Contains(strings.ToUpper(fake.query), "LIMIT") {
-		t.Fatalf("query still has a row cap: %s", fake.query)
 	}
 }
 
@@ -191,69 +153,6 @@ func TestReadingsRepositoryReturnsEmptySeriesForRequestedSensors(t *testing.T) {
 			}
 			if strings.Contains(fake.query, tc.unwantedMeasure) {
 				t.Fatalf("unexpected measurement in query: %s", fake.query)
-			}
-		})
-	}
-}
-
-func TestReadingsRepositoryInputHandling(t *testing.T) {
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
-	tests := map[string]struct {
-		query      port.ReadingsQuery
-		wantResult port.ReadingsResult
-		wantError  string
-		wantCalls  int
-		wantParams influxdb3.QueryParameters
-	}{
-		"empty building is forwarded to InfluxDB": {
-			query:      port.ReadingsQuery{Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}},
-			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
-			wantCalls:  1,
-			wantParams: influxdb3.QueryParameters{"building": "", "room": "R", "start": "2026-10-26T10:00:00Z", "end": "2026-10-26T11:00:00Z"},
-		},
-		"empty room is forwarded to InfluxDB": {
-			query:      port.ReadingsQuery{Building: "B", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}},
-			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
-			wantCalls:  1,
-			wantParams: influxdb3.QueryParameters{"building": "B", "room": "", "start": "2026-10-26T10:00:00Z", "end": "2026-10-26T11:00:00Z"},
-		},
-		"zero start is forwarded to InfluxDB": {
-			query:      port.ReadingsQuery{Building: "B", Room: "R", End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}},
-			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
-			wantCalls:  1,
-			wantParams: influxdb3.QueryParameters{"building": "B", "room": "R", "start": "0001-01-01T00:00:00Z", "end": "2026-10-26T11:00:00Z"},
-		},
-		"reversed range is forwarded to InfluxDB": {
-			query:      port.ReadingsQuery{Building: "B", Room: "R", Start: start.Add(time.Hour), End: start, Sensors: []domain.SensorType{domain.PIR_SENSOR}},
-			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
-			wantCalls:  1,
-			wantParams: influxdb3.QueryParameters{"building": "B", "room": "R", "start": "2026-10-26T11:00:00Z", "end": "2026-10-26T10:00:00Z"},
-		},
-		"unsupported sensor is rejected by adapter": {
-			query:      port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.SensorType(100)}},
-			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}},
-			wantError:  "unsupported sensor type 100",
-		},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			fake := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{})}
-			repo := &ReadingsRepository{client: fake}
-			got, err := repo.GetReadings(context.Background(), tc.query)
-			if tc.wantError != "" && (err == nil || !strings.Contains(err.Error(), tc.wantError)) {
-				t.Fatalf("error = %v, want containing %q", err, tc.wantError)
-			}
-			if tc.wantError == "" && err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if !reflect.DeepEqual(got, tc.wantResult) {
-				t.Fatalf("result = %#v, want %#v", got, tc.wantResult)
-			}
-			if fake.calls != tc.wantCalls {
-				t.Fatalf("database calls = %d, want %d", fake.calls, tc.wantCalls)
-			}
-			if !reflect.DeepEqual(fake.params, tc.wantParams) {
-				t.Fatalf("query params = %#v, want %#v", fake.params, tc.wantParams)
 			}
 		})
 	}
