@@ -56,7 +56,7 @@ func TestReadingsToQuery(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := Readings{
 				Building: "zilverling", RoomNumber: "Z2402", StartTime: tc.start, EndTime: tc.end,
-				Sensors: []string{"PIR", "pressure", "hum", "temp", "co2equivalent", "voc", "airresistance", "mic_vol", "busy_level"},
+				Sensors: []string{"PIRs", "pressure", "humidity", "temperature", "co2equivalent", "voc", "iaq", "mic_vol", "busy_level"},
 			}
 			query, err := r.ToQuery()
 			if err != nil {
@@ -77,7 +77,7 @@ func TestReadingsToQuery(t *testing.T) {
 			wantSensors := []domain.SensorType{
 				domain.PIR_SENSOR, domain.PRESSURE_SENSOR, domain.HUMIDITY_SENSOR,
 				domain.TEMPERATURE_SENSOR, domain.CO2EQUIVALENT_SENSOR, domain.VOC_SENSOR,
-				domain.AIRRESISTANCE_SENSOR, domain.MIC_VOL_SENSOR, domain.BUSY_LEVEL,
+				domain.IAQ_SENSOR, domain.MIC_VOL_SENSOR, domain.BUSY_LEVEL,
 			}
 			if !reflect.DeepEqual(query.Sensors, wantSensors) {
 				t.Errorf("sensors = %v, want %v", query.Sensors, wantSensors)
@@ -85,7 +85,7 @@ func TestReadingsToQuery(t *testing.T) {
 		})
 	}
 
-	valid := Readings{StartTime: "2026-07-01 12:00:00.000", EndTime: "2026-07-01 13:00:00.000", Sensors: []string{"temp"}}
+	valid := Readings{StartTime: "2026-07-01 12:00:00.000", EndTime: "2026-07-01 13:00:00.000", Sensors: []string{"temperature"}}
 	for _, tc := range []struct {
 		name string
 		edit func(*Readings)
@@ -168,6 +168,17 @@ func TestReadingsToQuery(t *testing.T) {
 			_, err := r.ToQuery()
 			if !errors.Is(err, tc.want) {
 				t.Errorf("error = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestReadingsRejectsLegacySensorNames(t *testing.T) {
+	for _, name := range []string{"temp", "hum", "airresistance", "PIR"} {
+		t.Run(name, func(t *testing.T) {
+			r := Readings{StartTime: "2026-07-01 12:00:00.000", EndTime: "2026-07-01 13:00:00.000", Sensors: []string{name}}
+			if _, err := r.ToQuery(); !errors.Is(err, ErrUnknownSensor) {
+				t.Fatalf("error = %v, want %v", err, ErrUnknownSensor)
 			}
 		})
 	}

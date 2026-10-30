@@ -17,10 +17,10 @@ import (
 
 var scalarFields = map[domain.SensorType]string{
 	domain.PRESSURE_SENSOR:      "pressure",
-	domain.HUMIDITY_SENSOR:      "hum",
-	domain.TEMPERATURE_SENSOR:   "temp",
+	domain.HUMIDITY_SENSOR:      "humidity",
+	domain.TEMPERATURE_SENSOR:   "temperature",
 	domain.VOC_SENSOR:           "voc",
-	domain.AIRRESISTANCE_SENSOR: "airresistance",
+	domain.IAQ_SENSOR:           "iaq",
 	domain.MIC_VOL_SENSOR:       "mic_vol",
 	domain.CO2EQUIVALENT_SENSOR: "co2equivalent",
 	domain.BUSY_LEVEL:           "busy_level",

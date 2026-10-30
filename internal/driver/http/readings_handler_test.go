@@ -35,43 +35,43 @@ func TestGetReadingsRoute(t *testing.T) {
 	}{
 		{
 			name:    "valid request",
-			query:   validQuery + "&sensors=PIR&sensors=temp",
+			query:   validQuery + "&sensors=PIRs&sensors=temperature",
 			status:  500,
 			message: "Internal server error.",
 		},
 		{
 			name:    "exactly 24 hours",
-			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-02%2012:00:00.000&sensors=temp",
+			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-02%2012:00:00.000&sensors=temperature",
 			status:  500,
 			message: "Internal server error.",
 		},
 		{
 			name:    "more than 24 hours",
-			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-02%2012:00:00.001&sensors=temp",
+			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-02%2012:00:00.001&sensors=temperature",
 			status:  400,
 			message: "Time range must be between 0 and 24 hours.",
 		},
 		{
 			name:    "end before start",
-			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2011:59:59.999&sensors=temp",
+			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2011:59:59.999&sensors=temperature",
 			status:  400,
 			message: "Time range must be between 0 and 24 hours.",
 		},
 		{
 			name:    "24 elapsed hours across spring clock change",
-			query:   "start_time=2026-03-28%2012:00:00.000&end_time=2026-03-29%2013:00:00.000&sensors=temp",
+			query:   "start_time=2026-03-28%2012:00:00.000&end_time=2026-03-29%2013:00:00.000&sensors=temperature",
 			status:  500,
 			message: "Internal server error.",
 		},
 		{
 			name:    "25 elapsed hours across autumn clock change",
-			query:   "start_time=2026-10-24%2012:00:00.000&end_time=2026-10-25%2012:00:00.000&sensors=temp",
+			query:   "start_time=2026-10-24%2012:00:00.000&end_time=2026-10-25%2012:00:00.000&sensors=temperature",
 			status:  400,
 			message: "Time range must be between 0 and 24 hours.",
 		},
 		{
 			name:    "bad timestamp",
-			query:   "start_time=2026-07-01T12:00:00Z&end_time=2026-07-01%2013:00:00.000&sensors=temp",
+			query:   "start_time=2026-07-01T12:00:00Z&end_time=2026-07-01%2013:00:00.000&sensors=temperature",
 			status:  400,
 			message: "Invalid timestamp format.",
 		},
@@ -89,7 +89,7 @@ func TestGetReadingsRoute(t *testing.T) {
 		},
 		{
 			name:    "unknown repeated sensor",
-			query:   validQuery + "&sensors=temp&sensors=CO2",
+			query:   validQuery + "&sensors=temperature&sensors=CO2",
 			status:  400,
 			message: "Unknown sensor name.",
 		},
@@ -116,10 +116,11 @@ func TestGetReadingsSuccess(t *testing.T) {
 	result := port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{
 		domain.TEMPERATURE_SENSOR: {{Timestamp: timestamp, Value: 21.7}},
 		domain.BUSY_LEVEL:         {{Timestamp: timestamp, Value: -128}},
+		domain.IAQ_SENSOR:         {{Timestamp: timestamp, Value: 50}},
 	}, PIR: []domain.PIRReading{{Timestamp: timestamp, Values: []domain.PIRValue{{ID: "pir-1", Value: 1}, {ID: "pir-2", Value: 0}}}}}
 	server := NewServer(readingsServiceFunc(func(context.Context, port.ReadingsQuery) (port.ReadingsResult, error) { return result, nil }))
 	recorder := httptest.NewRecorder()
-	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temp&sensors=PIR&sensors=busy_level&sensors=hum&sensors=temp", nil))
+	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=PIRs&sensors=busy_level&sensors=humidity&sensors=iaq&sensors=temperature", nil))
 	if recorder.Code != 200 {
 		t.Fatalf("status = %d, want 200; body = %s", recorder.Code, recorder.Body.String())
 	}
@@ -128,7 +129,7 @@ func TestGetReadingsSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	var want any
-	if err := json.Unmarshal([]byte(`{"status":200,"message":"data retrieved successfully","data":{"temp":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}],"busy_level":[{"timestamp":"2026-07-01 12:15:30.250","value":-128}],"PIR":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":"pir-1","value":1},{"ID":"pir-2","value":0}]}],"hum":[]}}`), &want); err != nil {
+	if err := json.Unmarshal([]byte(`{"status":200,"message":"data retrieved successfully","data":{"temperature":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}],"busy_level":[{"timestamp":"2026-07-01 12:15:30.250","value":-128}],"PIRs":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":"pir-1","value":1},{"ID":"pir-2","value":0}]}],"humidity":[],"iaq":[{"timestamp":"2026-07-01 12:15:30.250","value":50}]}}`), &want); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -170,7 +171,7 @@ func TestGetReadingsErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server := NewServer(readingsServiceFunc(func(context.Context, port.ReadingsQuery) (port.ReadingsResult, error) { return tc.result, tc.err }))
 			recorder := httptest.NewRecorder()
-			server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temp&sensors=PIR&sensors=busy_level", nil))
+			server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=PIRs&sensors=busy_level", nil))
 			var got errorResponse
 			if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
 				t.Fatal(err)
@@ -195,7 +196,7 @@ func TestGetReadingsForwardsContextAndQuery(t *testing.T) {
 		return port.ReadingsResult{}, service.ErrNoReadings
 	}))
 	recorder := httptest.NewRecorder()
-	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temp", nil).WithContext(ctx))
+	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature", nil).WithContext(ctx))
 	if !called {
 		t.Fatal("service was not called")
 	}

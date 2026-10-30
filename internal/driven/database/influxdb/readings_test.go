@@ -64,7 +64,7 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 			Nullable: true,
 		},
 		{
-			Name:     "hum",
+			Name:     "humidity",
 			Type:     arrow.PrimitiveTypes.Float64,
 			Nullable: true,
 		},
@@ -242,8 +242,8 @@ func TestReadingsRepositoryHandlesAbsentTelemetrySchema(t *testing.T) {
 		{"room table", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, "FROM room_telemetry"},
 		{"PIR table", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.pir_reading' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, "FROM pir_reading"},
 		{"both tables", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"), status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.pir_reading' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, ""},
-		{"optional column", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2equivalent. Valid fields are room_telemetry.temp.")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.CO2EQUIVALENT_SENSOR}, "co2equivalent"},
-		{"only optional column", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2equivalent. Valid fields are room_telemetry.temp.")}, []domain.SensorType{domain.CO2EQUIVALENT_SENSOR}, ""},
+		{"optional column", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2equivalent. Valid fields are room_telemetry.temperature.")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.CO2EQUIVALENT_SENSOR}, "co2equivalent"},
+		{"only optional column", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2equivalent. Valid fields are room_telemetry.temperature.")}, []domain.SensorType{domain.CO2EQUIVALENT_SENSOR}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := &schemaFailureClient{failures: tc.failures}
@@ -286,7 +286,7 @@ func (f *schemaFailureClient) QueryWithParameters(_ context.Context, q string, _
 func TestReadingsRepositoryDoesNotHideOtherSchemaOrTransportErrors(t *testing.T) {
 	for _, err := range []error{
 		status.Error(codes.PermissionDenied, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"),
-		status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named temp. Valid fields are room_telemetry.time."),
+		status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named temperature. Valid fields are room_telemetry.time."),
 		status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.other' not found"),
 		errors.New("Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"),
 	} {
@@ -295,5 +295,44 @@ func TestReadingsRepositoryDoesNotHideOtherSchemaOrTransportErrors(t *testing.T)
 		if got == nil || len(client.queries) != 1 {
 			t.Fatalf("error %v hidden: %v; queries=%v", err, got, client.queries)
 		}
+	}
+}
+
+func TestReadingsRepositoryQueriesTelegrafScalarFields(t *testing.T) {
+	stamp := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "time", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
+		{Name: "temperature", Type: arrow.PrimitiveTypes.Float64},
+		{Name: "humidity", Type: arrow.PrimitiveTypes.Float64},
+		{Name: "iaq", Type: arrow.PrimitiveTypes.Float64},
+	}, nil)
+	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
+	defer builder.Release()
+	builder.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(stamp.UnixNano()))
+	builder.Field(1).(*array.Float64Builder).Append(21.7)
+	builder.Field(2).(*array.Float64Builder).Append(45)
+	builder.Field(3).(*array.Float64Builder).Append(50)
+	record := builder.NewRecordBatch()
+	defer record.Release()
+	client := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{record: record})}
+	repo := &ReadingsRepository{client: client}
+	got, err := repo.GetReadings(context.Background(), port.ReadingsQuery{
+		Building: "B", Room: "R", Start: stamp.Add(-time.Hour), End: stamp.Add(time.Hour),
+		Sensors: []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.HUMIDITY_SENSOR, domain.IAQ_SENSOR},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wantSQL = "SELECT * FROM (SELECT time, temperature, humidity, iaq, NULL AS pir_id, NULL AS pir_value FROM room_telemetry WHERE building = $building AND room = $room AND time >= $start AND time <= $end) AS readings ORDER BY time, pir_id"
+	if client.query != wantSQL {
+		t.Errorf("SQL = %s, want %s", client.query, wantSQL)
+	}
+	want := port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{
+		domain.TEMPERATURE_SENSOR: {{Timestamp: stamp, Value: 21.7}},
+		domain.HUMIDITY_SENSOR:    {{Timestamp: stamp, Value: 45}},
+		domain.IAQ_SENSOR:         {{Timestamp: stamp, Value: 50}},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("readings = %#v, want %#v", got, want)
 	}
 }

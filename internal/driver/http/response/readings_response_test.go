@@ -13,12 +13,13 @@ import (
 func TestMapReadings(t *testing.T) {
 	timestamp := time.Date(2026, 7, 1, 10, 15, 30, 250000000, time.UTC)
 	query := port.ReadingsQuery{Sensors: []domain.SensorType{
-		domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR, domain.BUSY_LEVEL, domain.HUMIDITY_SENSOR, domain.TEMPERATURE_SENSOR,
+		domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR, domain.BUSY_LEVEL, domain.HUMIDITY_SENSOR, domain.IAQ_SENSOR, domain.TEMPERATURE_SENSOR,
 	}}
 	result := port.ReadingsResult{
 		Scalars: map[domain.SensorType][]domain.ScalarReading{
 			domain.TEMPERATURE_SENSOR: {{Timestamp: timestamp, Value: 21.7}},
 			domain.BUSY_LEVEL:         {{Timestamp: timestamp, Value: -128}},
+			domain.IAQ_SENSOR:         {{Timestamp: timestamp, Value: 50}},
 		},
 		PIR: []domain.PIRReading{{Timestamp: timestamp, Values: []domain.PIRValue{{ID: "pir-1", Value: 1}, {ID: "pir-2", Value: 0}}}},
 	}
@@ -30,7 +31,7 @@ func TestMapReadings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"status":200,"message":"data retrieved successfully","data":{"PIR":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":"pir-1","value":1},{"ID":"pir-2","value":0}]}],"busy_level":[{"timestamp":"2026-07-01 12:15:30.250","value":-128}],"hum":[],"temp":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}]}}`
+	const want = `{"status":200,"message":"data retrieved successfully","data":{"PIRs":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":"pir-1","value":1},{"ID":"pir-2","value":0}]}],"busy_level":[{"timestamp":"2026-07-01 12:15:30.250","value":-128}],"humidity":[],"iaq":[{"timestamp":"2026-07-01 12:15:30.250","value":50}],"temperature":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}]}}`
 	if string(encoded) != want {
 		t.Fatalf("response = %s, want %s", encoded, want)
 	}

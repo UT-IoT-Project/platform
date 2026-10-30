@@ -18,13 +18,13 @@ var (
 const timestampLayout = "2006-01-02 15:04:05.000"
 
 var sensorTypes = map[string]domain.SensorType{
-	"PIR":           domain.PIR_SENSOR,
+	"PIRs":          domain.PIR_SENSOR,
 	"pressure":      domain.PRESSURE_SENSOR,
-	"hum":           domain.HUMIDITY_SENSOR,
-	"temp":          domain.TEMPERATURE_SENSOR,
+	"humidity":      domain.HUMIDITY_SENSOR,
+	"temperature":   domain.TEMPERATURE_SENSOR,
 	"co2equivalent": domain.CO2EQUIVALENT_SENSOR,
 	"voc":           domain.VOC_SENSOR,
-	"airresistance": domain.AIRRESISTANCE_SENSOR,
+	"iaq":           domain.IAQ_SENSOR,
 	"mic_vol":       domain.MIC_VOL_SENSOR,
 	"busy_level":    domain.BUSY_LEVEL,
 }

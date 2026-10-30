@@ -38,8 +38,8 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 	}
 	formatTime := func(timestamp time.Time) string { return timestamp.In(location).Format("2006-01-02 15:04:05.000") }
 	names := map[domain.SensorType]string{
-		domain.PIR_SENSOR: "PIR", domain.PRESSURE_SENSOR: "pressure", domain.HUMIDITY_SENSOR: "hum", domain.TEMPERATURE_SENSOR: "temp",
-		domain.VOC_SENSOR: "voc", domain.AIRRESISTANCE_SENSOR: "airresistance", domain.MIC_VOL_SENSOR: "mic_vol",
+		domain.PIR_SENSOR: "PIRs", domain.PRESSURE_SENSOR: "pressure", domain.HUMIDITY_SENSOR: "humidity", domain.TEMPERATURE_SENSOR: "temperature",
+		domain.VOC_SENSOR: "voc", domain.IAQ_SENSOR: "iaq", domain.MIC_VOL_SENSOR: "mic_vol",
 		domain.CO2EQUIVALENT_SENSOR: "co2equivalent", domain.BUSY_LEVEL: "busy_level",
 	}
 	response := Readings{Status: 200, Message: "data retrieved successfully", Data: make(map[string]any)}
