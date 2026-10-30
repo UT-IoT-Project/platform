@@ -11,6 +11,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/jouleion/busyness-sensing/backend/internal/core/domain"
 	"github.com/jouleion/busyness-sensing/backend/internal/core/port"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var scalarFields = map[domain.SensorType]string{
@@ -67,7 +69,6 @@ func (r *ReadingsRepository) GetReadings(ctx context.Context, query port.Reading
 		result.PIR = []domain.PIRReading{}
 	}
 
-	statement := readingsSQL(fields, wantPIR)
 	params := influxdb3.QueryParameters{
 		"building": query.Building,
 		"room":     query.Room,
@@ -76,9 +77,21 @@ func (r *ReadingsRepository) GetReadings(ctx context.Context, query port.Reading
 	}
 	queryContext, cancel := context.WithCancel(ctx)
 	defer cancel()
-	rows, err := r.client.QueryWithParameters(queryContext, statement, params)
-	if err != nil {
-		return result, fmt.Errorf("query influxdb readings: %w", err)
+	var rows *influxdb3.QueryIterator
+	for {
+		if len(fields) == 0 && !wantPIR {
+			return result, nil
+		}
+		var err error
+		rows, err = r.client.QueryWithParameters(queryContext, readingsSQL(fields, wantPIR), params)
+		if err == nil {
+			break
+		}
+		var omitted bool
+		fields, wantPIR, omitted = omitAbsentTelemetry(err, fields, wantPIR)
+		if !omitted {
+			return result, fmt.Errorf("query influxdb readings: %w", err)
+		}
 	}
 	if rows == nil {
 		return result, errors.New("query influxdb readings: nil result")
@@ -166,4 +179,29 @@ func readingValue(value any) (float64, error) {
 	default:
 		return 0, fmt.Errorf("unexpected value type %T", value)
 	}
+}
+
+// InfluxDB creates measurements and optional columns only after their first write.
+// Retry only these known planning failures; each retry removes a requested source.
+func omitAbsentTelemetry(err error, fields []string, wantPIR bool) ([]string, bool, bool) {
+	var flightError interface{ GRPCStatus() *status.Status }
+	if !errors.As(err, &flightError) || flightError.GRPCStatus().Code() != codes.InvalidArgument {
+		return fields, wantPIR, false
+	}
+	message := flightError.GRPCStatus().Message()
+	const prefix = "Error while logically planning query: "
+	if len(fields) > 0 && message == prefix+"Error during planning: table 'public.iox.room_telemetry' not found" {
+		return nil, wantPIR, true
+	}
+	if wantPIR && message == prefix+"Error during planning: table 'public.iox.pir_reading' not found" {
+		return fields, false, true
+	}
+	if strings.HasPrefix(message, prefix+"Schema error: No field named co2equivalent. Valid fields are ") {
+		for i, field := range fields {
+			if field == "co2equivalent" {
+				return append(fields[:i:i], fields[i+1:]...), wantPIR, true
+			}
+		}
+	}
+	return fields, wantPIR, false
 }

@@ -42,9 +42,9 @@ Responsibilities:
   health checks pass.
 - **InfluxDB** stores timestamped readings and serves time-range queries to the
   Go API. Compose uses InfluxDB 3 Core (`influxdb:3.11-core`) with settings in
-  `configs/influxdb3.env`; the Go adapter initializes the SDK and verifies server health at startup;
-  its reading query adapter has unit tests but still needs live verification
-  against this version.
+  `configs/influxdb3.env`; the Go adapter initializes the SDK and verifies server
+  health at startup. Its reading query adapter has unit tests and was verified
+  in a local Compose smoke test against this version on 2026-10-30.
 - **Go backend** exposes a controlled HTTP API and owns request validation,
   authorization, query limits, response formats, and application use cases. It
   reads from InfluxDB; Telegraf owns MQTT ingestion.
@@ -126,6 +126,7 @@ clients, or MQTT libraries.
 | `internal/core/service/` | Use cases and application rules. Depend on ports, not concrete adapters. |
 | `internal/driver/http/` | Inbound HTTP adapter: routes, handlers, request/response DTOs, and transport status mapping. |
 | `internal/driver/http/request/` | HTTP request DTOs and transport-level validation types. |
+| `internal/driver/http/response/` | HTTP response DTOs and mapping from core readings to API data. |
 | `internal/driven/database/influxdb/` | Outbound InfluxDB adapter implementing core ports and mapping query results to core types. |
 
 For a new read endpoint, keep the flow in this direction:
@@ -145,13 +146,25 @@ on HTTP details. The adapter should not decide public response formats.
 
 ## Current backend status
 
-This module is scaffolding, not a completed API:
+The readings API is implemented through the core service and InfluxDB adapter.
+A local Compose smoke test on 2026-10-30 verified MQTT → Telegraf → InfluxDB
+3.11 Core → HTTP with scalar and identified PIR readings, partial results,
+empty-result 404 responses, and over-24-hour 400 responses. This verifies the
+tested local setup, not a production deployment:
 
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.
-  It closes the database client when the server returns.
-- `internal/driver/http/server.go` configures Echo middleware but currently
-  registers no application routes.
+  It wires the InfluxDB readings repository into the core readings service and
+  HTTP server, and closes the database client when the server returns.
+- `internal/driver/http/server.go` configures Echo middleware and registers
+  `GET /api/v1/readings/:building/:roomNumber`. The separate readings handler
+  binds and validates the request, converts Europe/Amsterdam timestamps to UTC,
+  and calls the core readings service with the request context. It returns 200
+  with requested sensor arrays when any readings exist, 404 when all requested
+  sensors have no readings, and generic 500 responses for query or mapping
+  errors. A 404 does not establish that the room is nonexistent. It rejects
+  ambiguous and nonexistent local times during daylight saving time changes,
+  reversed ranges, and ranges over 24 elapsed hours.
 - `Dockerfile.webserver` packages the backend. `docker-compose.yml` defines backend,
   Mosquitto, InfluxDB 3 Core, and Telegraf services. The derived Mosquitto
   image loads the incoming-message timestamp plugin. Telegraf configuration
@@ -162,15 +175,21 @@ This module is scaffolding, not a completed API:
 - `internal/core/domain/` defines sensor types and timestamped scalar and PIR
   reading models. `internal/core/port/` declares batch reading query/result
   types and service/repository interfaces. The InfluxDB adapter implements the
-  reading repository; core services remain unimplemented.
+  reading repository. `internal/core/service/` implements the readings use case
+  and classifies all-empty results with a no-readings error.
 - `internal/driven/database/influxdb/` initializes the InfluxDB SDK client and
   checks `/ping` through that client with a five-second timeout. Compose uses
   `/health` for its separate InfluxDB healthcheck. The reading repository runs
-  one parameterized time-range query across the room and PIR measurements and
-  maps results to core types. It is not wired into an HTTP route yet. Server
-  health does not verify database existence or query authorization.
-- There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server
-  and InfluxDB adapter remain scaffolding.
+  a parameterized batch time-range query across the requested room and PIR
+  measurements and maps results to core types. Known missing-table or optional
+  CO2-column planning errors trigger retries without the absent source; normal
+  successful requests use one query. It is wired through the core service into
+  the HTTP handler and was exercised against local InfluxDB 3.11 Core, including
+  fresh-database and missing-PIR/CO2 cases. Missing-room handling also has a unit
+  regression test. Server health does not verify database existence or query
+  authorization.
+- There is no Go MQTT subscriber. Telegraf owns ingestion; the local smoke test
+  published representative telemetry through Mosquitto, not ESP32 firmware.
 
 Keep this status accurate as files are added. Do not describe an endpoint,
 database adapter, or deployment as implemented until its code exists.
@@ -213,8 +232,11 @@ safe implementation plan before editing.
   port to loopback. Enable authentication and keep its token in the environment
   before exposing the service beyond the local development machine.
 - Create the InfluxDB database before writing with
-  `docker compose exec influxdb3 influxdb3 create database busyness_sensing`.
-  The local Telegraf output targets that database.
+  `docker compose exec -T influxdb3 influxdb3 create database --token local-dev-token busyness_sensing`.
+  In the supplied authentication-disabled local setup, this placeholder avoids
+  the malformed authorization header caused by the empty `INFLUXDB3_AUTH_TOKEN`
+  environment value. Use a valid token when authentication is enabled. The local
+  Telegraf output targets that database.
 - Format Go code with `gofmt`. Useful commands from this directory are
   `go run . --help`, `go run . start`, `go test ./...`, and `go vet ./...`.
 

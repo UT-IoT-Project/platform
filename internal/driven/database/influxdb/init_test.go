@@ -19,9 +19,18 @@ func TestInitHealth(t *testing.T) {
 		wantClient bool
 		wantError  string
 	}{
-		"HTTP 200 starts with a healthy client": {status: http.StatusOK, wantClient: true},
-		"HTTP 204 starts with a healthy client": {status: http.StatusNoContent, wantClient: true},
-		"HTTP 503 rejects an unhealthy server":  {status: http.StatusServiceUnavailable, wantError: "influxdb health check failed: HTTP 503"},
+		"HTTP 200 starts with a healthy client": {
+			status:     http.StatusOK,
+			wantClient: true,
+		},
+		"HTTP 204 starts with a healthy client": {
+			status:     http.StatusNoContent,
+			wantClient: true,
+		},
+		"HTTP 503 rejects an unhealthy server": {
+			status:    http.StatusServiceUnavailable,
+			wantError: "influxdb health check failed: HTTP 503",
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -65,12 +74,51 @@ func TestInitMissingSettings(t *testing.T) {
 		config    config.InfluxDBConfig
 		wantError string
 	}{
-		"empty host is rejected":          {config: config.InfluxDBConfig{Database: "test", Token: "secret-token"}, wantError: "influxdb host is required"},
-		"whitespace host is rejected":     {config: config.InfluxDBConfig{Host: " \t\n", Database: "test", Token: "secret-token"}, wantError: "influxdb host is required"},
-		"empty database is rejected":      {config: config.InfluxDBConfig{Host: "http://localhost:8181", Token: "secret-token"}, wantError: "influxdb database is required"},
-		"whitespace database is rejected": {config: config.InfluxDBConfig{Host: "http://localhost:8181", Database: " \t\n", Token: "secret-token"}, wantError: "influxdb database is required"},
-		"empty token is rejected":         {config: config.InfluxDBConfig{Host: "http://localhost:8181", Database: "test"}, wantError: "influxdb token is required"},
-		"whitespace token is rejected":    {config: config.InfluxDBConfig{Host: "http://localhost:8181", Database: "test", Token: " \t\n"}, wantError: "influxdb token is required"},
+		"empty host is rejected": {
+			config: config.InfluxDBConfig{
+				Database: "test",
+				Token:    "secret-token",
+			},
+			wantError: "influxdb host is required",
+		},
+		"whitespace host is rejected": {
+			config: config.InfluxDBConfig{
+				Host:     " \t\n",
+				Database: "test",
+				Token:    "secret-token",
+			},
+			wantError: "influxdb host is required",
+		},
+		"empty database is rejected": {
+			config: config.InfluxDBConfig{
+				Host:  "http://localhost:8181",
+				Token: "secret-token",
+			},
+			wantError: "influxdb database is required",
+		},
+		"whitespace database is rejected": {
+			config: config.InfluxDBConfig{
+				Host:     "http://localhost:8181",
+				Database: " \t\n",
+				Token:    "secret-token",
+			},
+			wantError: "influxdb database is required",
+		},
+		"empty token is rejected": {
+			config: config.InfluxDBConfig{
+				Host:     "http://localhost:8181",
+				Database: "test",
+			},
+			wantError: "influxdb token is required",
+		},
+		"whitespace token is rejected": {
+			config: config.InfluxDBConfig{
+				Host:     "http://localhost:8181",
+				Database: "test",
+				Token:    " \t\n",
+			},
+			wantError: "influxdb token is required",
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -93,9 +141,18 @@ func TestInitMalformedHost(t *testing.T) {
 		host      string
 		wantError string
 	}{
-		"malformed URL is rejected":         {host: "http://[secret-token", wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment"},
-		"non HTTP scheme is rejected":       {host: "ftp://secret-token.example", wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment"},
-		"embedded credentials are rejected": {host: "http://user:secret-token@localhost:8181", wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment"},
+		"malformed URL is rejected": {
+			host:      "http://[secret-token",
+			wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment",
+		},
+		"non HTTP scheme is rejected": {
+			host:      "ftp://secret-token.example",
+			wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment",
+		},
+		"embedded credentials are rejected": {
+			host:      "http://user:secret-token@localhost:8181",
+			wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment",
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -135,9 +192,16 @@ func TestIsHealthy(t *testing.T) {
 		status    int
 		wantError string
 	}{
-		"HTTP 200 reports healthy":        {status: http.StatusOK},
-		"HTTP 204 reports healthy":        {status: http.StatusNoContent},
-		"HTTP 503 reports server failure": {status: http.StatusServiceUnavailable, wantError: "influxdb health check failed: HTTP 503"},
+		"HTTP 200 reports healthy": {
+			status: http.StatusOK,
+		},
+		"HTTP 204 reports healthy": {
+			status: http.StatusNoContent,
+		},
+		"HTTP 503 reports server failure": {
+			status:    http.StatusServiceUnavailable,
+			wantError: "influxdb health check failed: HTTP 503",
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
