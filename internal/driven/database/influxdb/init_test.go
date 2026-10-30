@@ -14,8 +14,17 @@ import (
 func TestInitHealth(t *testing.T) {
 	original := config.C
 	t.Cleanup(func() { config.C = original })
-	for _, status := range []int{http.StatusOK, http.StatusNoContent, http.StatusServiceUnavailable} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
+	tests := map[string]struct {
+		status     int
+		wantClient bool
+		wantError  string
+	}{
+		"HTTP 200 starts with a healthy client": {status: http.StatusOK, wantClient: true},
+		"HTTP 204 starts with a healthy client": {status: http.StatusNoContent, wantClient: true},
+		"HTTP 503 rejects an unhealthy server":  {status: http.StatusServiceUnavailable, wantError: "influxdb health check failed: HTTP 503"},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodGet || r.URL.Path != "/ping" {
 					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -24,24 +33,26 @@ func TestInitHealth(t *testing.T) {
 					t.Error("missing authorization")
 				}
 				w.Header().Set("X-Influxdb-Version", "3.11.0")
-				w.WriteHeader(status)
+				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte("secret-token"))
 			}))
-			defer server.Close()
+			t.Cleanup(server.Close)
 			config.C.InfluxDB = config.InfluxDBConfig{Host: server.URL, Database: "test", Token: "secret-token"}
 			client, err := Init()
-			if status < http.StatusMultipleChoices {
-				if err != nil || client == nil {
-					t.Fatalf("Init() = %v, %v; want client and no error", client, err)
-				}
-				defer client.Close()
-			} else {
-				if err == nil || client != nil {
-					t.Fatalf("Init() = %v, %v; want nil and error", client, err)
-				}
-				if strings.Contains(err.Error(), "secret-token") {
-					t.Fatal("error exposes response credentials")
-				}
+			if (client != nil) != tc.wantClient {
+				t.Fatalf("Init() client = %v; want client: %t", client, tc.wantClient)
+			}
+			if client != nil {
+				t.Cleanup(func() { _ = client.Close() })
+			}
+			if tc.wantError == "" && err != nil {
+				t.Fatalf("Init() error = %v; want no error", err)
+			}
+			if tc.wantError != "" && (err == nil || err.Error() != tc.wantError) {
+				t.Fatalf("Init() error = %v; want %q", err, tc.wantError)
+			}
+			if err != nil && strings.Contains(err.Error(), "secret-token") {
+				t.Fatal("error exposes response credentials")
 			}
 		})
 	}
@@ -50,41 +61,48 @@ func TestInitHealth(t *testing.T) {
 func TestInitMissingSettings(t *testing.T) {
 	original := config.C
 	t.Cleanup(func() { config.C = original })
-	for _, missing := range []string{"", " \t\n"} {
-		for _, field := range []string{"host", "database", "token"} {
-			t.Run(field, func(t *testing.T) {
-				c := config.InfluxDBConfig{Host: "http://localhost:8181", Database: "test", Token: "secret-token"}
-				switch field {
-				case "host":
-					c.Host = missing
-				case "database":
-					c.Database = missing
-				case "token":
-					c.Token = missing
-				}
-				config.C.InfluxDB = c
-				client, err := Init()
-				if client != nil || err == nil || !strings.Contains(err.Error(), field) {
-					t.Fatalf("Init() = %v, %v; want error naming %s", client, err, field)
-				}
-				if strings.Contains(err.Error(), "secret-token") {
-					t.Fatal("error exposes token")
-				}
-			})
-		}
+	tests := map[string]struct {
+		config    config.InfluxDBConfig
+		wantError string
+	}{
+		"empty host is rejected":          {config: config.InfluxDBConfig{Database: "test", Token: "secret-token"}, wantError: "influxdb host is required"},
+		"whitespace host is rejected":     {config: config.InfluxDBConfig{Host: " \t\n", Database: "test", Token: "secret-token"}, wantError: "influxdb host is required"},
+		"empty database is rejected":      {config: config.InfluxDBConfig{Host: "http://localhost:8181", Token: "secret-token"}, wantError: "influxdb database is required"},
+		"whitespace database is rejected": {config: config.InfluxDBConfig{Host: "http://localhost:8181", Database: " \t\n", Token: "secret-token"}, wantError: "influxdb database is required"},
+		"empty token is rejected":         {config: config.InfluxDBConfig{Host: "http://localhost:8181", Database: "test"}, wantError: "influxdb token is required"},
+		"whitespace token is rejected":    {config: config.InfluxDBConfig{Host: "http://localhost:8181", Database: "test", Token: " \t\n"}, wantError: "influxdb token is required"},
 	}
-
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			config.C.InfluxDB = tc.config
+			client, err := Init()
+			if client != nil || err == nil || err.Error() != tc.wantError {
+				t.Fatalf("Init() = %v, %v; want nil client and %q", client, err, tc.wantError)
+			}
+			if strings.Contains(err.Error(), "secret-token") {
+				t.Fatal("error exposes token")
+			}
+		})
+	}
 }
 
 func TestInitMalformedHost(t *testing.T) {
 	original := config.C
 	t.Cleanup(func() { config.C = original })
-	for _, host := range []string{"http://[secret-token", "ftp://secret-token.example", "http://user:secret-token@localhost:8181"} {
-		t.Run(host, func(t *testing.T) {
-			config.C.InfluxDB = config.InfluxDBConfig{Host: host, Database: "test", Token: "secret-token"}
+	tests := map[string]struct {
+		host      string
+		wantError string
+	}{
+		"malformed URL is rejected":         {host: "http://[secret-token", wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment"},
+		"non HTTP scheme is rejected":       {host: "ftp://secret-token.example", wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment"},
+		"embedded credentials are rejected": {host: "http://user:secret-token@localhost:8181", wantError: "influxdb host must be an HTTP or HTTPS URL without credentials, query, or fragment"},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			config.C.InfluxDB = config.InfluxDBConfig{Host: tc.host, Database: "test", Token: "secret-token"}
 			client, err := Init()
-			if client != nil || err == nil || !strings.Contains(err.Error(), "host") {
-				t.Fatalf("Init() = %v, %v; want host error", client, err)
+			if client != nil || err == nil || err.Error() != tc.wantError {
+				t.Fatalf("Init() = %v, %v; want nil client and %q", client, err, tc.wantError)
 			}
 			if strings.Contains(err.Error(), "secret-token") {
 				t.Fatal("host error exposes credentials")
@@ -93,47 +111,36 @@ func TestInitMalformedHost(t *testing.T) {
 	}
 }
 
-func TestInitRejectsHealthRedirect(t *testing.T) {
+func TestInitHealthFailureModes(t *testing.T) {
 	original := config.C
 	t.Cleanup(func() { config.C = original })
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ping" {
-			t.Error("followed health redirect")
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Redirect(w, r, "/secret-token", http.StatusFound)
-	}))
-	defer server.Close()
-	config.C.InfluxDB = config.InfluxDBConfig{Host: server.URL, Database: "test", Token: "secret-token"}
-	client, err := Init()
-	if client != nil || err == nil {
-		t.Fatalf("Init() = %v, %v; want redirect failure", client, err)
-	}
-	if strings.Contains(err.Error(), "secret-token") {
-		t.Fatal("redirect error exposes credentials")
-	}
-}
-
-func TestInitHealthTransportFailure(t *testing.T) {
-	original := config.C
-	t.Cleanup(func() { config.C = original })
-	// The health client must reject an untrusted TLS certificate.
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("unexpected successful transport") }))
-	defer server.Close()
-	config.C.InfluxDB = config.InfluxDBConfig{Host: server.URL, Database: "test", Token: "secret-token"}
-	client, err := Init()
-	if client != nil || err == nil {
-		t.Fatalf("Init() = %v, %v; want transport failure", client, err)
-	}
-	if strings.Contains(err.Error(), "secret-token") {
-		t.Fatal("transport error exposes credentials")
+	for name, tc := range healthFailureCases() {
+		t.Run(name, func(t *testing.T) {
+			server := tc.newServer(t)
+			t.Cleanup(server.Close)
+			config.C.InfluxDB = config.InfluxDBConfig{Host: server.URL, Database: "test", Token: "secret-token"}
+			client, err := Init()
+			if client != nil || err == nil || err.Error() != tc.wantError {
+				t.Fatalf("Init() = %v, %v; want nil client and %q", client, err, tc.wantError)
+			}
+			if strings.Contains(err.Error(), "secret-token") {
+				t.Fatal("health failure exposes credentials")
+			}
+		})
 	}
 }
 
 func TestIsHealthy(t *testing.T) {
-	for _, status := range []int{http.StatusOK, http.StatusNoContent, http.StatusServiceUnavailable} {
-		t.Run(http.StatusText(status), func(t *testing.T) {
+	tests := map[string]struct {
+		status    int
+		wantError string
+	}{
+		"HTTP 200 reports healthy":        {status: http.StatusOK},
+		"HTTP 204 reports healthy":        {status: http.StatusNoContent},
+		"HTTP 503 reports server failure": {status: http.StatusServiceUnavailable, wantError: "influxdb health check failed: HTTP 503"},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodGet || r.URL.Path != "/ping" {
 					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -142,45 +149,66 @@ func TestIsHealthy(t *testing.T) {
 					t.Error("missing authorization")
 				}
 				w.Header().Set("X-Influxdb-Version", "3.11.0")
-				w.WriteHeader(status)
+				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte("secret-token"))
 			}))
-			defer server.Close()
+			t.Cleanup(server.Close)
 			client := newHealthTestClient(t, server.URL)
 			err := IsHealthy(client)
-			if status < http.StatusMultipleChoices {
-				if err != nil {
-					t.Fatalf("IsHealthy() = %v; want no error", err)
-				}
-			} else if err == nil || err.Error() != "influxdb health check failed: HTTP 503" {
-				t.Fatalf("IsHealthy() = %v; want HTTP 503 error", err)
+			if tc.wantError == "" && err != nil {
+				t.Fatalf("IsHealthy() = %v; want no error", err)
+			}
+			if tc.wantError != "" && (err == nil || err.Error() != tc.wantError) {
+				t.Fatalf("IsHealthy() = %v; want %q", err, tc.wantError)
 			}
 		})
 	}
 }
 
-func TestIsHealthyRejectsRedirect(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/ping" {
-			t.Error("followed health redirect")
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		http.Redirect(w, r, "/secret-token", http.StatusFound)
-	}))
-	defer server.Close()
-	if err := IsHealthy(newHealthTestClient(t, server.URL)); err == nil || !strings.Contains(err.Error(), "HTTP 302") || strings.Contains(err.Error(), "secret-token") {
-		t.Fatalf("IsHealthy() = %v; want sanitized redirect failure", err)
+func TestIsHealthyFailureModes(t *testing.T) {
+	for name, tc := range healthFailureCases() {
+		t.Run(name, func(t *testing.T) {
+			server := tc.newServer(t)
+			t.Cleanup(server.Close)
+			err := IsHealthy(newHealthTestClient(t, server.URL))
+			if err == nil || err.Error() != tc.wantError {
+				t.Fatalf("IsHealthy() = %v; want %q", err, tc.wantError)
+			}
+			if strings.Contains(err.Error(), "secret-token") {
+				t.Fatal("health failure exposes credentials")
+			}
+		})
 	}
 }
 
-func TestIsHealthyTransportFailure(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("unexpected successful transport")
-	}))
-	defer server.Close()
-	if err := IsHealthy(newHealthTestClient(t, server.URL)); err == nil || strings.Contains(err.Error(), "secret-token") {
-		t.Fatalf("IsHealthy() = %v; want sanitized transport failure", err)
+type healthFailureCase struct {
+	newServer func(*testing.T) *httptest.Server
+	wantError string
+}
+
+func healthFailureCases() map[string]healthFailureCase {
+	return map[string]healthFailureCase{
+		"redirect is not followed": {
+			newServer: func(t *testing.T) *httptest.Server {
+				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path != "/ping" {
+						t.Error("followed health redirect")
+						w.WriteHeader(http.StatusOK)
+						return
+					}
+					http.Redirect(w, r, "/secret-token", http.StatusFound)
+				}))
+			},
+			wantError: "influxdb health check failed: HTTP 302",
+		},
+		"untrusted TLS certificate is rejected": {
+			newServer: func(t *testing.T) *httptest.Server {
+				return httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+					t.Error("unexpected successful transport")
+				}))
+			},
+			wantError: "influxdb health check failed: request could not complete",
+		},
 	}
 }
 
