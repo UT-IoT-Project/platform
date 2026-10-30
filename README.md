@@ -60,6 +60,8 @@ payload has no timestamp. The required telemetry contract looks like this
   "iaq": 12345.6,
   "mic_vol": 0.18,
   "busy_level": 2,
+  "wifiPackets": 42,
+  "bleAdvertisements": 17,
   "PIRs": [
     {"ID": "pir-1", "value": 1},
     {"ID": "pir-2", "value": 0}
@@ -69,8 +71,11 @@ payload has no timestamp. The required telemetry contract looks like this
 
 Firmware is maintained in a separate repository and is not changed here.
 Coordinate adoption of these exact field names and uppercase PIR `ID` with
-the firmware owner before deployment. Existing InfluxDB data under previous
-column names is not migrated by this change.
+the firmware owner before deployment. Both `wifiPackets` and
+`bleAdvertisements` are required signed JSON integers. Coordinate the firmware
+and Telegraf rollout and drain or handle old queued publications: Telegraf can
+reject legacy room payloads that lack these required fields. The database is
+refreshed when the telemetry contract changes; no historical backfill is included.
 
 Mosquitto's incoming-message plugin adds a top-level `timestamp` containing
 Unix milliseconds when the broker receives an accepted sensor publication.
@@ -86,14 +91,15 @@ synchronized for useful times.
 `pressure`, `humidity`, `temperature`, `co2equivalent`, `voc`, `iaq`, and
 `mic_vol` are float32 values from the ESP32; `co2equivalent` is optional.
 `busy_level` is an int8 value (-128 through 127). Telegraf converts the
-floating-point readings to its `float` field type and `busy_level` to `int`;
+floating-point readings to its `float` field type and `busy_level`,
+`wifiPackets`, and `bleAdvertisements` to `int`;
 its parser does not enforce the source's float32 precision or int8 range.
 `PIRs` is an array of objects with a stable string `ID` and numeric `value`.
 Telegraf writes two measurements into the `busyness_sensing` database:
 
 | Measurement | Tags | Fields |
 | --- | --- | --- |
-| `room_telemetry` | `building`, `room` | `pressure`, `humidity`, `temperature`, optional `co2equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level` |
+| `room_telemetry` | `building`, `room` | `pressure`, `humidity`, `temperature`, optional `co2equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level`, `wifiPackets`, `bleAdvertisements` |
 | `pir_reading` | `building`, `room`, `pir_id` | `value` |
 
 Room and building identifiers are tags so queries can filter by them. Each PIR
@@ -143,12 +149,17 @@ documented in [`docs/api/openapi.yaml`](docs/api/openapi.yaml). The contract
 uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
 `end_time`, and repeated `sensors` query parameters. Supported sensor names are
 `PIRs`, `pressure`, `humidity`, `temperature`, `co2equivalent`, `voc`, `iaq`,
-`mic_vol`, and `busy_level`. Requests for a building or room absent from the
-database, or without readings for the requested sensors and time range,
+`mic_vol`, `busy_level`, `wifiPackets`, and `bleAdvertisements`. Requests for a
+building or room absent from the database, or without readings for the requested
+sensors and time range,
 return HTTP 404; this does not establish that a room is nonexistent. The route
 is implemented through the core readings service and InfluxDB adapter. Responses
 include an array for every requested sensor, with `PIRs` grouped by timestamp
-and uppercase `ID` preserved for each PIR value.
+and uppercase `ID` preserved for each PIR value. The two wireless counts use
+signed 64-bit integers through storage, core types, and HTTP response values;
+no nonnegative or narrower count-range restriction is imposed. The earlier
+local Compose smoke test predates these counters; their coverage is currently
+helper and Go unit tests.
 
 ## Raspberry Pi helper commands
 
@@ -160,6 +171,7 @@ docker compose down
 
 ./utils/insert_mqtt.sh -b BBB -r 212 --pressure 1013.25 -H 48.2 -t 22.5 \
   --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 \
+  --wifi-packets 42 --ble-advertisements 17 \
   -c 615.0 -p pir-1=1,pir-2=0
 
 ./utils/read_mqtt.sh live -b BBB -n 5

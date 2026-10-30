@@ -64,12 +64,17 @@ agreed telemetry contract is:
 - Float32 `pressure`, `humidity`, `temperature`, `voc`, `iaq`, and `mic_vol`, plus
   optional float32 `co2equivalent`.
 - `busy_level`: int8 (-128 through 127).
+- Required `wifiPackets` and `bleAdvertisements`: signed JSON integers, stored
+  as InfluxDB `int` fields and preserved as `int64` through the core and API.
+  No nonnegative or narrower count-range restriction is imposed.
 - `PIRs`: array entries with stable string `ID` and numeric `value` properties.
 
 These field names are implemented in this backend and its Telegraf config.
 Firmware is maintained separately and is not updated here; coordinate adoption
-of this contract with its owner before deployment. Existing InfluxDB data under
-previous column names is not migrated.
+of this contract with its owner before deployment. Coordinate the firmware and
+Telegraf rollout and drain or handle old queued publications: required wireless
+fields can cause Telegraf to reject legacy room payloads. The database is
+refreshed with contract updates; no historical backfill is included.
 
 The Telegraf config uses separate MQTT consumers for room readings and
 PIR readings. It writes `room_telemetry` points with `building` and `room`
@@ -77,7 +82,8 @@ tags, and `pir_reading` points with `building`, `room`, and `pir_id` tags.
 Numeric readings are fields. Keep PIR identity attached to the corresponding
 value; do not flatten anonymous array values. Reconfirm this mapping if the
 external firmware contract changes. The parser converts float32 source
-readings to its `float` field type and `busy_level` to `int`; it does not
+readings to its `float` field type and `busy_level`, `wifiPackets`, and
+`bleAdvertisements` to `int` in `room_telemetry`; it does not
 enforce float32 precision or the int8 range. Both consumers use the broker
 `timestamp` as point time, including for messages queued while Telegraf is
 offline. The PIR array and each `ID`/`value` pair remain unchanged. This is
@@ -158,10 +164,13 @@ empty-result 404 responses, and over-24-hour 400 responses. This verifies the
 tested local setup, not a production deployment:
 
 - The API accepts `PIRs`, `pressure`, `humidity`, `temperature`,
-  `co2equivalent`, `voc`, `iaq`, `mic_vol`, and `busy_level` as sensor names.
+  `co2equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level`, `wifiPackets`, and
+  `bleAdvertisements` as sensor names.
   Response keys use the same names; grouped PIR values retain uppercase `ID`.
+  Wireless counts use integer JSON values and retain signed 64-bit precision.
   This contract alignment is covered by helper and Go unit tests; the prior
-  local Compose smoke test above has not been repeated for these field changes.
+  local Compose smoke test above predates the counters and has not been repeated
+  for these field changes.
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.
   It wires the InfluxDB readings repository into the core readings service and
@@ -182,8 +191,8 @@ tested local setup, not a production deployment:
   data is stored under `volumes/influxdb3/data/`. Mosquitto and InfluxDB
   healthchecks gate Telegraf startup; InfluxDB health also gates backend startup; Telegraf also has a process liveness
   healthcheck.
-- `internal/core/domain/` defines sensor types and timestamped scalar and PIR
-  reading models. `internal/core/port/` declares batch reading query/result
+- `internal/core/domain/` defines sensor types and timestamped scalar, integer,
+  and PIR reading models. `internal/core/port/` declares batch reading query/result
   types and service/repository interfaces. The InfluxDB adapter implements the
   reading repository. `internal/core/service/` implements the readings use case
   and classifies all-empty results with a no-readings error.

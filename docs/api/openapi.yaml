@@ -60,7 +60,9 @@ paths:
           description: >-
             Case-sensitive sensor names to retrieve. Supply one query
             parameter per sensor. Supported names are PIRs, pressure, humidity,
-            temperature, co2equivalent, voc, iaq, mic_vol, and busy_level.
+            temperature, co2equivalent, voc, iaq, mic_vol, busy_level,
+            wifiPackets, and bleAdvertisements. The two wireless counts return
+            signed 64-bit integer values with no nonnegative restriction.
             PIRs returns all PIR readings grouped by timestamp.
           style: form
           explode: true
@@ -79,12 +81,16 @@ paths:
                 - iaq
                 - mic_vol
                 - busy_level
+                - wifiPackets
+                - bleAdvertisements
           examples:
             multiple:
               summary: Request multiple sensors using repeated keys
               value:
                 - PIRs
                 - temperature
+                - wifiPackets
+                - bleAdvertisements
       responses:
         '200':
           description: At least one requested sensor has readings. Every requested sensor is included; sensors without readings have empty arrays. Unrequested sensors are omitted.
@@ -132,13 +138,23 @@ paths:
                       busy_level:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 2
+                      wifiPackets:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 42
+                      bleAdvertisements:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 17
                 partial:
-                  summary: Requested temperature has readings while requested PIRs has none
+                  summary: Requested temperature and wifiPackets have readings while PIRs and bleAdvertisements have none
                   value:
                     status: 200
                     message: data retrieved successfully
                     data:
                       PIRs: []
+                      bleAdvertisements: []
+                      wifiPackets:
+                        - timestamp: '2026-10-14 10:16:00.000'
+                          value: 42
                       temperature:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 21.7
@@ -211,6 +227,18 @@ components:
           $ref: '#/components/schemas/Timestamp'
         value:
           type: number
+    IntegerReading:
+      type: object
+      description: Timestamped wifiPackets or bleAdvertisements reading, preserved as a signed 64-bit integer. Negative values are allowed.
+      required:
+        - timestamp
+        - value
+      properties:
+        timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        value:
+          type: integer
+          format: int64
     BusyLevelReading:
       type: object
       description: Timestamped busy_level reading. The source value is an int8.
@@ -289,6 +317,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BusyLevelReading'
+        wifiPackets:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegerReading'
+        bleAdvertisements:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegerReading'
       additionalProperties: false
     ReadingsResponse:
       type: object
