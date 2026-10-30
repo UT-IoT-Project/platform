@@ -176,9 +176,11 @@ tested local setup, not a production deployment:
   that range cause a generic 500 response. The Go core and adapter retain int64
   values internally without float conversion. This contract alignment is covered
   by helper and Go unit tests, with both external bounds covered by the broker
-  integration test; the prior local Compose smoke test above predates the
-  counters and has not been repeated
-  for these field changes.
+  integration test. A separate local Compose smoke test on 2026-10-30 published
+  one event with `wifiPackets` 42 and `bleAdvertisements` 17 through Mosquitto,
+  Telegraf, and InfluxDB 3.11 Core, then verified both integer values through
+  the HTTP API alongside temperature and identified PIR readings. It did not
+  exercise ESP32 firmware or a production deployment.
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.
   It wires the InfluxDB readings repository into the core readings service and

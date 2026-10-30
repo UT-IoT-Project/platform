@@ -38,7 +38,7 @@ that readings are currently arriving or being stored.
 Create the InfluxDB database before Telegraf can store readings:
 
 ```sh
-docker compose exec influxdb3 influxdb3 create database busyness_sensing
+docker compose exec -T influxdb3 influxdb3 create database --token local-dev-token busyness_sensing
 ```
 
 Run `sh tests/mosquitto_ingress_timestamp.sh` from this directory to build an
@@ -164,7 +164,12 @@ counts with a generic 500 response. The broker parses and reprints JSON numbers
 through cJSON doubles, which preserve the signed 32-bit range but cannot preserve
 arbitrary int64 values. The earlier local Compose smoke test predates these
 counters; helper and Go unit tests cover their contract, and the broker integration
-test verifies both signed 32-bit bounds survive timestamp insertion.
+test verifies both signed 32-bit bounds survive timestamp insertion. A separate
+local Compose smoke test on 2026-10-30 published `wifiPackets` 42 and
+`bleAdvertisements` 17 through MQTT, Telegraf, and InfluxDB 3.11 Core, then
+retrieved both as integer values from the HTTP API alongside temperature and
+identified PIR readings. This test did not use ESP32 firmware or a production
+deployment.
 
 ## Raspberry Pi helper commands
 
