@@ -19,7 +19,7 @@ Required (unless --raw is used):
       --voc N
       --iaq N
       --mic-vol N       sent as "mic_vol"
-      --busyness-label N  integer from 0 through 255
+      --busy-level N    integer from 0 through 255, sent as "busy_level"
       --wifi-packets N  unsigned 32-bit integer sent as "wifiPackets"
       --ble-adverts N
                         unsigned 32-bit integer sent as "bleAdverts"
@@ -35,7 +35,7 @@ Optional:
 Env: MQTT_HOST (127.0.0.1), MQTT_PORT (1883), MQTT_USER, MQTT_PASS
 
 Example:
-  ./utils/insert_mqtt.sh -b gui-test -r 101 --pressure 1013.25 -H 44 -t 21.5 --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busyness-label 2 --wifi-packets 42 --ble-adverts 17 -c 600 -p 1=1,2=0
+  ./utils/insert_mqtt.sh -b gui-test -r 101 --pressure 1013.25 -H 44 -t 21.5 --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 --wifi-packets 42 --ble-adverts 17 -c 600 -p 1=1,2=0
 EOF
 }
 
@@ -56,13 +56,13 @@ build_cmd() {
   fi
 }
 
-building="" room="" pressure="" humidity="" temperature="" co2Equivalent="" voc="" iaq="" mic_vol="" busyness_label="" wifi_packets="" ble_adverts="" pirs="" raw="" topic="" dry_run=0
+building="" room="" pressure="" humidity="" temperature="" co2Equivalent="" voc="" iaq="" mic_vol="" busy_level="" wifi_packets="" ble_adverts="" pirs="" raw="" topic="" dry_run=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) usage; exit 0 ;;
     --dry-run) dry_run=1; shift ;;
-    -b|--building|-r|--room|--pressure|-t|--temperature|-H|--humidity|-c|--co2-equivalent|--voc|--iaq|--mic-vol|--mic_vol|--busyness-label|--wifi-packets|--ble-adverts|-p|--pirs|--raw|--topic)
+    -b|--building|-r|--room|--pressure|-t|--temperature|-H|--humidity|-c|--co2-equivalent|--voc|--iaq|--mic-vol|--mic_vol|--busy-level|--wifi-packets|--ble-adverts|-p|--pirs|--raw|--topic)
       [[ $# -ge 2 ]] || die "$1 needs a value"
       case $1 in
         -b|--building) building=$2 ;;
@@ -74,7 +74,7 @@ while [[ $# -gt 0 ]]; do
         --voc) voc=$2 ;;
         --iaq) iaq=$2 ;;
         --mic-vol|--mic_vol) mic_vol=$2 ;;
-        --busyness-label) busyness_label=$2 ;;
+        --busy-level) busy_level=$2 ;;
         --wifi-packets) wifi_packets=$2 ;;
         --ble-adverts) ble_adverts=$2 ;;
         -p|--pirs) pirs=$2 ;;
@@ -99,13 +99,13 @@ fi
 if [[ -n $raw ]]; then
   payload=$raw
 else
-  [[ -n $pressure && -n $humidity && -n $temperature && -n $voc && -n $iaq && -n $mic_vol && -n $busyness_label && -n $wifi_packets && -n $ble_adverts && -n $co2Equivalent ]] ||
-    die "pressure, humidity, temperature, voc, iaq, mic_vol, busynessLabel, wifiPackets, bleAdverts, and co2Equivalent are required (or use --raw)"
+  [[ -n $pressure && -n $humidity && -n $temperature && -n $voc && -n $iaq && -n $mic_vol && -n $busy_level && -n $wifi_packets && -n $ble_adverts && -n $co2Equivalent ]] ||
+    die "pressure, humidity, temperature, voc, iaq, mic_vol, busy_level, wifiPackets, bleAdverts, and co2Equivalent are required (or use --raw)"
   for reading in pressure humidity temperature voc iaq mic_vol co2Equivalent; do
     is_number "${!reading}" || die "$reading must be a number"
   done
-  [[ $busyness_label =~ ^(0|[1-9][0-9]{0,2})$ ]] && ((busyness_label <= 255)) ||
-    die "busynessLabel must be an integer from 0 through 255"
+  [[ $busy_level =~ ^(0|[1-9][0-9]{0,2})$ ]] && ((busy_level <= 255)) ||
+    die "busy_level must be an integer from 0 through 255"
 
   for reading in wifi_packets ble_adverts; do
     count_value=${!reading}
@@ -114,7 +114,7 @@ else
       die "$reading must be an integer from 0 through 4294967295"
   done
 
-  payload="{\"pressure\":$pressure,\"humidity\":$humidity,\"temperature\":$temperature,\"voc\":$voc,\"iaq\":$iaq,\"mic_vol\":$mic_vol,\"busynessLabel\":$busyness_label,\"wifiPackets\":$wifi_packets,\"bleAdverts\":$ble_adverts"
+  payload="{\"pressure\":$pressure,\"humidity\":$humidity,\"temperature\":$temperature,\"voc\":$voc,\"iaq\":$iaq,\"mic_vol\":$mic_vol,\"busy_level\":$busy_level,\"wifiPackets\":$wifi_packets,\"bleAdverts\":$ble_adverts"
   payload+=",\"co2Equivalent\":$co2Equivalent"
 
   pir_json=""

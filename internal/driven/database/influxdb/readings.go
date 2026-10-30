@@ -23,7 +23,7 @@ var scalarFields = map[domain.SensorType]string{
 	domain.IAQ_SENSOR:           "iaq",
 	domain.MIC_VOL_SENSOR:       "mic_vol",
 	domain.CO2EQUIVALENT_SENSOR: "co2Equivalent",
-	domain.BUSY_LEVEL:           "busynessLabel",
+	domain.BUSY_LEVEL:           "busy_level",
 }
 
 var integerFields = map[domain.SensorType]string{

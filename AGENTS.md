@@ -63,7 +63,7 @@ agreed telemetry contract is:
   as well as malformed sensor JSON.
 - Float32 `pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`,
   and `mic_vol`.
-- `busynessLabel`: an unsigned byte currently emitting labels 0 through 3.
+- `busy_level`: an unsigned byte currently emitting labels 0 through 3.
 - Required `wifiPackets` and `bleAdverts`: unsigned 32-bit JSON integers
   (0 through 4294967295). They are stored as InfluxDB `int` fields and
   transported internally as `int64`; HTTP validates the range before emitting
@@ -71,8 +71,10 @@ agreed telemetry contract is:
 - `pirs`: array entries with numeric uppercase `ID` (currently 1, 2, and 3)
   and integer `activity` (0 through 100) properties.
 
-These field names follow `esp32/src/main.cpp:preparePayload()` in the separate
-firmware repository. The database is refreshed with contract updates; no
+The backend expects these exact field names. The available checkout of the
+separate firmware repository still spells `busy_level` as `busynessLabel` in
+`esp32/src/main.cpp:preparePayload()`; that checkout must be updated to produce
+the agreed event. The database is refreshed with contract updates; no
 historical backfill is included.
 
 The Telegraf config uses separate MQTT consumers for room readings and
@@ -81,7 +83,7 @@ tags, and `pir_reading` points with `building`, `room`, and `pir_id` tags.
 Numeric readings are fields. Keep PIR identity attached to the corresponding
 value; do not flatten anonymous array values. Reconfirm this mapping if the
 external firmware contract changes. The parser converts float32 source
-readings to its `float` field type and `busynessLabel`, `wifiPackets`, and
+readings to its `float` field type and `busy_level`, `wifiPackets`, and
 `bleAdverts` to `int` in `room_telemetry`; it does not
 enforce float32 precision or the integer ranges. The helper validates generated
 wireless counts for integer syntax and this range without arithmetic overflow;
@@ -169,7 +171,7 @@ empty-result 404 responses, and over-24-hour 400 responses. This verifies the
 tested local setup, not a production deployment:
 
 - The API accepts `pirs`, `pressure`, `humidity`, `temperature`,
-  `co2Equivalent`, `voc`, `iaq`, `mic_vol`, `busynessLabel`, `wifiPackets`, and
+  `co2Equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level`, `wifiPackets`, and
   `bleAdverts` as sensor names. Response keys use the same names; grouped PIR
   activities retain numeric uppercase `ID`. Wireless counts return unsigned
   32-bit integer JSON values; stored values outside that range cause a generic

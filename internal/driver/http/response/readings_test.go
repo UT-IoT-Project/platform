@@ -32,7 +32,7 @@ func TestMapReadings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"status":200,"message":"data retrieved successfully","data":{"busynessLabel":[{"timestamp":"2026-07-01 12:15:30.250","value":255}],"humidity":[],"iaq":[{"timestamp":"2026-07-01 12:15:30.250","value":50}],"pirs":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":1,"activity":1},{"ID":2,"activity":0}]}],"temperature":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}]}}`
+	const want = `{"status":200,"message":"data retrieved successfully","data":{"busy_level":[{"timestamp":"2026-07-01 12:15:30.250","value":255}],"humidity":[],"iaq":[{"timestamp":"2026-07-01 12:15:30.250","value":50}],"pirs":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":1,"activity":1},{"ID":2,"activity":0}]}],"temperature":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}]}}`
 	if string(encoded) != want {
 		t.Fatalf("response = %s, want %s", encoded, want)
 	}

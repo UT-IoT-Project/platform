@@ -56,7 +56,7 @@ func TestReadingsToQuery(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := Readings{
 				Building: "zilverling", RoomNumber: "Z2402", StartTime: tc.start, EndTime: tc.end,
-				Sensors: []string{"pirs", "pressure", "humidity", "temperature", "co2Equivalent", "voc", "iaq", "mic_vol", "busynessLabel"},
+				Sensors: []string{"pirs", "pressure", "humidity", "temperature", "co2Equivalent", "voc", "iaq", "mic_vol", "busy_level"},
 			}
 			query, err := r.ToQuery()
 			if err != nil {
@@ -174,7 +174,7 @@ func TestReadingsToQuery(t *testing.T) {
 }
 
 func TestReadingsRejectsLegacySensorNames(t *testing.T) {
-	for _, name := range []string{"temp", "hum", "airresistance", "PIR", "PIRs", "co2equivalent", "busy_level", "bleAdvertisements"} {
+	for _, name := range []string{"temp", "hum", "airresistance", "PIR", "PIRs", "co2equivalent", "busynessLabel", "bleAdvertisements"} {
 		t.Run(name, func(t *testing.T) {
 			r := Readings{StartTime: "2026-07-01 12:00:00.000", EndTime: "2026-07-01 13:00:00.000", Sensors: []string{name}}
 			if _, err := r.ToQuery(); !errors.Is(err, ErrUnknownSensor) {

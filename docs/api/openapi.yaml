@@ -61,7 +61,7 @@ paths:
           description: >-
             Case-sensitive sensor names to retrieve. Supply one query
             parameter per sensor. Supported names are pirs, pressure, humidity,
-            temperature, co2Equivalent, voc, iaq, mic_vol, busynessLabel,
+            temperature, co2Equivalent, voc, iaq, mic_vol, busy_level,
             wifiPackets, and bleAdverts. The two wireless counts return
             unsigned 32-bit integer values (0 through 4294967295). Stored
             wireless counts outside that range produce the generic 500 response.
@@ -82,7 +82,7 @@ paths:
                 - voc
                 - iaq
                 - mic_vol
-                - busynessLabel
+                - busy_level
                 - wifiPackets
                 - bleAdverts
           examples:
@@ -137,7 +137,7 @@ paths:
                       mic_vol:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 0.18
-                      busynessLabel:
+                      busy_level:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 2
                       wifiPackets:
@@ -243,9 +243,9 @@ components:
           format: int64
           minimum: 0
           maximum: 4294967295
-    BusynessLabelReading:
+    BusyLevelReading:
       type: object
-      description: Timestamped unsigned-byte busynessLabel reading. The current firmware emits labels 0 through 3.
+      description: Timestamped unsigned-byte busy_level reading. The current firmware emits labels 0 through 3.
       required:
         - timestamp
         - value
@@ -322,10 +322,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Reading'
-        busynessLabel:
+        busy_level:
           type: array
           items:
-            $ref: '#/components/schemas/BusynessLabelReading'
+            $ref: '#/components/schemas/BusyLevelReading'
         wifiPackets:
           type: array
           items:

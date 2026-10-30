@@ -28,7 +28,7 @@ var sensorTypes = map[string]domain.SensorType{
 	"voc":           domain.VOC_SENSOR,
 	"iaq":           domain.IAQ_SENSOR,
 	"mic_vol":       domain.MIC_VOL_SENSOR,
-	"busynessLabel": domain.BUSY_LEVEL,
+	"busy_level":    domain.BUSY_LEVEL,
 }
 
 type Readings struct {

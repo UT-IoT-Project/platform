@@ -14,7 +14,7 @@ SCRIPT = ROOT / "utils" / "insert_mqtt.sh"
 READINGS = [
     "-b", "BBB", "-r", "212", "--pressure", "1013.25", "--humidity", "48.2",
     "--temperature", "22.5", "--voc", "0.42", "--iaq", "12345.6",
-    "--co2-equivalent", "615.0", "--mic-vol", "0.18", "--busyness-label", "2",
+    "--co2-equivalent", "615.0", "--mic-vol", "0.18", "--busy-level", "2",
     "--wifi-packets", "4294967295", "--ble-adverts", "23",
     "--pirs", "1=1,2=0",
 ]
@@ -40,7 +40,7 @@ class InsertMqttContractTest(unittest.TestCase):
             "pressure": 1013.25, "humidity": 48.2, "temperature": 22.5,
             "co2Equivalent": 615.0, "voc": 0.42,
             "iaq": 12345.6, "mic_vol": 0.18,
-            "busynessLabel": 2, "wifiPackets": 4294967295, "bleAdverts": 23,
+            "busy_level": 2, "wifiPackets": 4294967295, "bleAdverts": 23,
             "pirs": [{"ID": 1, "activity": 1}, {"ID": 2, "activity": 0}],
         })
 
@@ -88,7 +88,7 @@ class InsertMqttContractTest(unittest.TestCase):
                     self.assertIn("0 through 4294967295", result.stderr)
 
     def test_old_sensor_flags_are_rejected(self):
-        for flag in ("--temp", "--hum", "--airresistance", "--busy-level", "--ble-advertisements", "--co2equivalent"):
+        for flag in ("--temp", "--hum", "--airresistance", "--busyness-label", "--ble-advertisements", "--co2equivalent"):
             with self.subTest(flag=flag):
                 result = run_helper(*READINGS, flag, "1", "--dry-run")
                 self.assertNotEqual(result.returncode, 0)
@@ -102,14 +102,14 @@ class InsertMqttContractTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("required", result.stderr)
 
-    def test_busyness_label_must_fit_uint8(self):
+    def test_busy_level_must_fit_uint8(self):
         for value in ("256", "-1", "1.5", "18446744073709551616"):
             with self.subTest(value=value):
                 args = READINGS.copy()
-                args[args.index("--busyness-label") + 1] = value
+                args[args.index("--busy-level") + 1] = value
                 result = run_helper(*args, "--dry-run")
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn("busynessLabel", result.stderr)
+                self.assertIn("busy_level", result.stderr)
 
     def test_pirs_require_numeric_ids_and_integer_activity(self):
         for value in ("pir1=1", "1=0.5", "1=-1", "1=256", "01=1"):

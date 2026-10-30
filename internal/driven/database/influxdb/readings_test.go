@@ -69,7 +69,7 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 			Nullable: true,
 		},
 		{
-			Name:     "busynessLabel",
+			Name:     "busy_level",
 			Type:     arrow.PrimitiveTypes.Int64,
 			Nullable: true,
 		},
@@ -132,7 +132,7 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 	if fake.calls != 1 || !strings.Contains(fake.query, "UNION ALL") {
 		t.Fatalf("expected one batch query, got calls=%d query=%q", fake.calls, fake.query)
 	}
-	for _, field := range []string{`"co2Equivalent"`, `"busynessLabel"`, "activity AS pir_value"} {
+	for _, field := range []string{`"co2Equivalent"`, "busy_level", "activity AS pir_value"} {
 		if !strings.Contains(fake.query, field) {
 			t.Errorf("query missing firmware field %q: %s", field, fake.query)
 		}

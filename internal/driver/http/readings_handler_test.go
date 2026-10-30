@@ -120,7 +120,7 @@ func TestGetReadingsSuccess(t *testing.T) {
 	}, PIR: []domain.PIRReading{{Timestamp: timestamp, Values: []domain.PIRValue{{ID: "1", Value: 1}, {ID: "2", Value: 0}}}}}
 	server := NewServer(readingsServiceFunc(func(context.Context, port.ReadingsQuery) (port.ReadingsResult, error) { return result, nil }))
 	recorder := httptest.NewRecorder()
-	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=pirs&sensors=busynessLabel&sensors=humidity&sensors=iaq&sensors=temperature", nil))
+	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=pirs&sensors=busy_level&sensors=humidity&sensors=iaq&sensors=temperature", nil))
 	if recorder.Code != 200 {
 		t.Fatalf("status = %d, want 200; body = %s", recorder.Code, recorder.Body.String())
 	}
@@ -129,7 +129,7 @@ func TestGetReadingsSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	var want any
-	if err := json.Unmarshal([]byte(`{"status":200,"message":"data retrieved successfully","data":{"temperature":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}],"busynessLabel":[{"timestamp":"2026-07-01 12:15:30.250","value":255}],"pirs":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":1,"activity":1},{"ID":2,"activity":0}]}],"humidity":[],"iaq":[{"timestamp":"2026-07-01 12:15:30.250","value":50}]}}`), &want); err != nil {
+	if err := json.Unmarshal([]byte(`{"status":200,"message":"data retrieved successfully","data":{"temperature":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}],"busy_level":[{"timestamp":"2026-07-01 12:15:30.250","value":255}],"pirs":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":1,"activity":1},{"ID":2,"activity":0}]}],"humidity":[],"iaq":[{"timestamp":"2026-07-01 12:15:30.250","value":50}]}}`), &want); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -179,7 +179,7 @@ func TestGetReadingsErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server := NewServer(readingsServiceFunc(func(context.Context, port.ReadingsQuery) (port.ReadingsResult, error) { return tc.result, tc.err }))
 			recorder := httptest.NewRecorder()
-			server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=pirs&sensors=busynessLabel&sensors=wifiPackets", nil))
+			server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=pirs&sensors=busy_level&sensors=wifiPackets", nil))
 			var got errorResponse
 			if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
 				t.Fatal(err)

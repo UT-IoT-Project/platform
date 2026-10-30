@@ -59,7 +59,7 @@ payload has no timestamp. Its telemetry event looks like this:
   "voc": 0.42,
   "iaq": 12345.6,
   "mic_vol": 0.18,
-  "busynessLabel": 2,
+  "busy_level": 2,
   "wifiPackets": 42,
   "bleAdverts": 17,
   "pirs": [
@@ -87,9 +87,9 @@ network delay before broker receipt are not measured. Keep the broker clock
 synchronized for useful times.
 
 `pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`, and
-`mic_vol` are float32 values from the ESP32. `busynessLabel` is a firmware
+`mic_vol` are float32 values from the ESP32. `busy_level` is a firmware
 unsigned byte currently emitting labels 0 through 3. Telegraf converts the
-floating-point readings to its `float` field type and `busynessLabel`,
+floating-point readings to its `float` field type and `busy_level`,
 `wifiPackets`, and `bleAdverts` to `int`;
 its parser does not enforce the source's float32 precision or integer ranges.
 `pirs` is an array of objects with numeric `ID` and integer `activity` (0 through 100).
@@ -97,7 +97,7 @@ Telegraf writes two measurements into the `busyness_sensing` database:
 
 | Measurement | Tags | Fields |
 | --- | --- | --- |
-| `room_telemetry` | `building`, `room` | `pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`, `mic_vol`, `busynessLabel`, `wifiPackets`, `bleAdverts` |
+| `room_telemetry` | `building`, `room` | `pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level`, `wifiPackets`, `bleAdverts` |
 | `pir_reading` | `building`, `room`, `pir_id` | `activity` |
 
 Room and building identifiers are tags so queries can filter by them. Each PIR
@@ -147,7 +147,7 @@ documented in [`docs/api/openapi.yaml`](docs/api/openapi.yaml). The contract
 uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
 `end_time`, and repeated `sensors` query parameters. Supported sensor names are
 `pirs`, `pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`,
-`mic_vol`, `busynessLabel`, `wifiPackets`, and `bleAdverts`. Requests for a
+`mic_vol`, `busy_level`, `wifiPackets`, and `bleAdverts`. Requests for a
 building or room absent from the database, or without readings for the requested
 sensors and time range,
 return HTTP 404; this does not establish that a room is nonexistent. The route
@@ -178,7 +178,7 @@ docker compose up -d --build
 docker compose down
 
 ./utils/insert_mqtt.sh -b BBB -r 212 --pressure 1013.25 -H 48.2 -t 22.5 \
-  --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busyness-label 2 \
+  --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 \
   --wifi-packets 42 --ble-adverts 17 \
   -c 615.0 -p 1=100,2=0,3=40
 

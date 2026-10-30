@@ -46,7 +46,7 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 		domain.PIR_SENSOR: "pirs", domain.PRESSURE_SENSOR: "pressure", domain.HUMIDITY_SENSOR: "humidity", domain.TEMPERATURE_SENSOR: "temperature",
 		domain.VOC_SENSOR: "voc", domain.IAQ_SENSOR: "iaq", domain.MIC_VOL_SENSOR: "mic_vol",
 		domain.WIFI_PACKETS_SENSOR: "wifiPackets", domain.BLE_ADVERTISEMENTS_SENSOR: "bleAdverts",
-		domain.CO2EQUIVALENT_SENSOR: "co2Equivalent", domain.BUSY_LEVEL: "busynessLabel",
+		domain.CO2EQUIVALENT_SENSOR: "co2Equivalent", domain.BUSY_LEVEL: "busy_level",
 	}
 	response := Readings{Status: 200, Message: "data retrieved successfully", Data: make(map[string]any)}
 	for _, sensor := range query.Sensors {
@@ -88,7 +88,7 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 			readings := make([]busyLevelResponse, 0, len(result.Scalars[sensor]))
 			for _, reading := range result.Scalars[sensor] {
 				if !finite(reading.Value) || reading.Value < 0 || reading.Value > math.MaxUint8 || math.Trunc(reading.Value) != reading.Value {
-					return Readings{}, fmt.Errorf("invalid busyness label")
+					return Readings{}, fmt.Errorf("invalid busy_level")
 				}
 				readings = append(readings, busyLevelResponse{Timestamp: formatTime(reading.Timestamp), Value: uint8(reading.Value)})
 			}

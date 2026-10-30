@@ -27,7 +27,7 @@ docker exec "$name" mosquitto_sub -h 127.0.0.1 \
 before=$(python3 -c 'import time; print(time.time_ns() // 1000000)')
 docker exec "$name" mosquitto_pub -h 127.0.0.1 -q 1 \
   -t sensors/BBB/212 \
-  -m '{"pressure":1013.25,"humidity":48.2,"temperature":22.5,"voc":0.42,"iaq":12345.6,"mic_vol":0.18,"co2Equivalent":615.0,"busynessLabel":2,"wifiPackets":4294967295,"bleAdverts":4294967295,"pirs":[{"ID":1,"activity":1},{"ID":2,"activity":0}]}'
+  -m '{"pressure":1013.25,"humidity":48.2,"temperature":22.5,"voc":0.42,"iaq":12345.6,"mic_vol":0.18,"co2Equivalent":615.0,"busy_level":2,"wifiPackets":4294967295,"bleAdverts":4294967295,"pirs":[{"ID":1,"activity":1},{"ID":2,"activity":0}]}'
 sleep 2
 docker exec "$name" mosquitto_sub -h 127.0.0.1 \
   -i timestamp-test -c -q 1 -t sensors/BBB/212 -C 1 -W 5 >"$output"
