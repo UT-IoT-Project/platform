@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/InfluxCommunity/influxdb3-go/v2/influxdb3"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -225,5 +228,72 @@ func appendFloat(builder *array.Float64Builder, value *float64) {
 		builder.AppendNull()
 	} else {
 		builder.Append(*value)
+	}
+}
+
+// These messages and status codes come from InfluxDB 3.11 Core Flight queries.
+func TestReadingsRepositoryHandlesAbsentTelemetrySchema(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		failures []error
+		sensors  []domain.SensorType
+		omitted  string
+	}{
+		{"room table", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, "FROM room_telemetry"},
+		{"PIR table", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.pir_reading' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, "FROM pir_reading"},
+		{"both tables", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"), status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.pir_reading' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, ""},
+		{"optional column", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2equivalent. Valid fields are room_telemetry.temp.")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.CO2EQUIVALENT_SENSOR}, "co2equivalent"},
+		{"only optional column", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2equivalent. Valid fields are room_telemetry.temp.")}, []domain.SensorType{domain.CO2EQUIVALENT_SENSOR}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &schemaFailureClient{failures: tc.failures}
+			repo := &ReadingsRepository{client: client}
+			got, err := repo.GetReadings(context.Background(), port.ReadingsQuery{Sensors: tc.sensors})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, sensor := range tc.sensors {
+				if sensor == domain.PIR_SENSOR {
+					if got.PIR == nil || len(got.PIR) != 0 {
+						t.Fatalf("PIR = %#v", got.PIR)
+					}
+				} else if values, ok := got.Scalars[sensor]; !ok || values == nil || len(values) != 0 {
+					t.Fatalf("scalar %v = %#v", sensor, got.Scalars)
+				}
+			}
+			if tc.omitted != "" && strings.Contains(client.queries[len(client.queries)-1], tc.omitted) {
+				t.Fatalf("missing schema still queried: %v", client.queries)
+			}
+			if len(client.queries) > len(tc.failures)+1 {
+				t.Fatalf("unbounded retries: %v", client.queries)
+			}
+		})
+	}
+}
+
+type schemaFailureClient struct {
+	failures []error
+	queries  []string
+}
+
+func (f *schemaFailureClient) QueryWithParameters(_ context.Context, q string, _ influxdb3.QueryParameters, _ ...influxdb3.QueryOption) (*influxdb3.QueryIterator, error) {
+	f.queries = append(f.queries, q)
+	if len(f.queries) <= len(f.failures) {
+		return nil, f.failures[len(f.queries)-1]
+	}
+	return influxdb3.NewQueryIteratorFromReader(&oneBatchReader{}), nil
+}
+func TestReadingsRepositoryDoesNotHideOtherSchemaOrTransportErrors(t *testing.T) {
+	for _, err := range []error{
+		status.Error(codes.PermissionDenied, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"),
+		status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named temp. Valid fields are room_telemetry.time."),
+		status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.other' not found"),
+		errors.New("Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"),
+	} {
+		client := &schemaFailureClient{failures: []error{err}}
+		_, got := (&ReadingsRepository{client: client}).GetReadings(context.Background(), port.ReadingsQuery{Sensors: []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.CO2EQUIVALENT_SENSOR}})
+		if got == nil || len(client.queries) != 1 {
+			t.Fatalf("error %v hidden: %v; queries=%v", err, got, client.queries)
+		}
 	}
 }
