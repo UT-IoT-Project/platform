@@ -32,15 +32,55 @@ func TestReadingsServiceGetReadings(t *testing.T) {
 		err     error
 		wantErr error
 	}{
-		{name: "populated", result: port.ReadingsResult{Scalars: scalars, PIR: pir}},
-		{name: "scalar only partial", result: port.ReadingsResult{Scalars: scalars}},
-		{name: "PIR only partial", result: port.ReadingsResult{PIR: pir}},
-		{name: "integer only partial", result: port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{domain.WIFI_PACKETS_SENSOR: {{Timestamp: stamp, Value: 9007199254740993}}}}},
-		{name: "empty integers", result: port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{domain.WIFI_PACKETS_SENSOR: {}, domain.BLE_ADVERTISEMENTS_SENSOR: {}}}, wantErr: service.ErrNoReadings},
-		{name: "nil results", wantErr: service.ErrNoReadings},
-		{name: "empty collections", result: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {}}, PIR: []domain.PIRReading{}}, wantErr: service.ErrNoReadings},
-		{name: "repository failure", err: repositoryError, wantErr: repositoryError},
-		{name: "repository failure with data", result: port.ReadingsResult{Scalars: scalars}, err: repositoryError, wantErr: repositoryError},
+		{
+			name:   "populated",
+			result: port.ReadingsResult{Scalars: scalars, PIR: pir},
+		},
+		{
+			name:   "scalar only partial",
+			result: port.ReadingsResult{Scalars: scalars},
+		},
+		{
+			name:   "PIR only partial",
+			result: port.ReadingsResult{PIR: pir},
+		},
+		{
+			name: "integer only partial",
+			result: port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{
+				domain.WIFI_PACKETS_SENSOR: {{Timestamp: stamp, Value: 9007199254740993}},
+			}},
+		},
+		{
+			name: "empty integers",
+			result: port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{
+				domain.WIFI_PACKETS_SENSOR:       {},
+				domain.BLE_ADVERTISEMENTS_SENSOR: {},
+			}},
+			wantErr: service.ErrNoReadings,
+		},
+		{
+			name:    "nil results",
+			wantErr: service.ErrNoReadings,
+		},
+		{
+			name: "empty collections",
+			result: port.ReadingsResult{
+				Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {}},
+				PIR:     []domain.PIRReading{},
+			},
+			wantErr: service.ErrNoReadings,
+		},
+		{
+			name:    "repository failure",
+			err:     repositoryError,
+			wantErr: repositoryError,
+		},
+		{
+			name:    "repository failure with data",
+			result:  port.ReadingsResult{Scalars: scalars},
+			err:     repositoryError,
+			wantErr: repositoryError,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
