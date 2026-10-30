@@ -22,18 +22,25 @@ func (s *ReadingsService) GetReadings(ctx context.Context, query port.ReadingsQu
 	if err != nil {
 		return port.ReadingsResult{}, err
 	}
+	if !hasReadings(result) {
+		return port.ReadingsResult{}, ErrNoReadings
+	}
+	return result, nil
+}
+
+func hasReadings(result port.ReadingsResult) bool {
 	if len(result.PIR) > 0 {
-		return result, nil
+		return true
 	}
 	for _, readings := range result.Scalars {
 		if len(readings) > 0 {
-			return result, nil
+			return true
 		}
 	}
 	for _, readings := range result.Integers {
 		if len(readings) > 0 {
-			return result, nil
+			return true
 		}
 	}
-	return port.ReadingsResult{}, ErrNoReadings
+	return false
 }
