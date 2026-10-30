@@ -42,9 +42,9 @@ Responsibilities:
   health checks pass.
 - **InfluxDB** stores timestamped readings and serves time-range queries to the
   Go API. Compose uses InfluxDB 3 Core (`influxdb:3.11-core`) with settings in
-  `configs/influxdb3.env`; the Go adapter initializes the SDK and verifies server health at startup;
-  its reading query adapter has unit tests but still needs live verification
-  against this version.
+  `configs/influxdb3.env`; the Go adapter initializes the SDK and verifies server
+  health at startup. Its reading query adapter has unit tests and was verified
+  in a local Compose smoke test against this version on 2026-10-30.
 - **Go backend** exposes a controlled HTTP API and owns request validation,
   authorization, query limits, response formats, and application use cases. It
   reads from InfluxDB; Telegraf owns MQTT ingestion.
@@ -145,8 +145,11 @@ on HTTP details. The adapter should not decide public response formats.
 
 ## Current backend status
 
-The readings API is implemented through the core service and InfluxDB adapter;
-live verification against the Compose stack remains outstanding:
+The readings API is implemented through the core service and InfluxDB adapter.
+A local Compose smoke test on 2026-10-30 verified MQTT → Telegraf → InfluxDB
+3.11 Core → HTTP with scalar and identified PIR readings, partial results,
+empty-result 404 responses, and over-24-hour 400 responses. This verifies the
+tested local setup, not a production deployment:
 
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.
@@ -176,12 +179,16 @@ live verification against the Compose stack remains outstanding:
 - `internal/driven/database/influxdb/` initializes the InfluxDB SDK client and
   checks `/ping` through that client with a five-second timeout. Compose uses
   `/health` for its separate InfluxDB healthcheck. The reading repository runs
-  one parameterized time-range query across the room and PIR measurements and
-  maps results to core types. It is wired through the core service into the
-  HTTP handler; its SQL still needs live verification against InfluxDB 3 Core.
-  Server health does not verify database existence or query authorization.
-- There is no Go MQTT subscriber. Telegraf owns ingestion. The full MQTT →
-  Telegraf → InfluxDB → HTTP flow still requires live verification.
+  a parameterized batch time-range query across the requested room and PIR
+  measurements and maps results to core types. Known missing-table or optional
+  CO2-column planning errors trigger retries without the absent source; normal
+  successful requests use one query. It is wired through the core service into
+  the HTTP handler and was exercised against local InfluxDB 3.11 Core, including
+  fresh-database and missing-PIR/CO2 cases. Missing-room handling also has a unit
+  regression test. Server health does not verify database existence or query
+  authorization.
+- There is no Go MQTT subscriber. Telegraf owns ingestion; the local smoke test
+  published representative telemetry through Mosquitto, not ESP32 firmware.
 
 Keep this status accurate as files are added. Do not describe an endpoint,
 database adapter, or deployment as implemented until its code exists.
@@ -224,8 +231,11 @@ safe implementation plan before editing.
   port to loopback. Enable authentication and keep its token in the environment
   before exposing the service beyond the local development machine.
 - Create the InfluxDB database before writing with
-  `docker compose exec influxdb3 influxdb3 create database busyness_sensing`.
-  The local Telegraf output targets that database.
+  `docker compose exec -T influxdb3 influxdb3 create database --token local-dev-token busyness_sensing`.
+  In the supplied authentication-disabled local setup, this placeholder avoids
+  the malformed authorization header caused by the empty `INFLUXDB3_AUTH_TOKEN`
+  environment value. Use a valid token when authentication is enabled. The local
+  Telegraf output targets that database.
 - Format Go code with `gofmt`. Useful commands from this directory are
   `go run . --help`, `go run . start`, `go test ./...`, and `go vet ./...`.
 
