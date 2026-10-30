@@ -136,7 +136,7 @@ For a new read endpoint, keep the flow in this direction:
    request/response objects.
 3. The service applies application rules and calls a port from
    `internal/core/port/`.
-4. The InfluxDB adapter implements that port, runs a bounded query, and maps
+4. The InfluxDB adapter implements that port, runs a time-range query, and maps
    results to domain/application types.
 5. The handler maps the result to an HTTP response DTO and status code.
 
@@ -166,7 +166,7 @@ This module is scaffolding, not a completed API:
 - `internal/driven/database/influxdb/` initializes the InfluxDB SDK client and
   checks `/ping` through that client with a five-second timeout. Compose uses
   `/health` for its separate InfluxDB healthcheck. The reading repository runs
-  one bounded, parameterized query across the room and PIR measurements and
+  one parameterized time-range query across the room and PIR measurements and
   maps results to core types. It is not wired into an HTTP route yet. Server
   health does not verify database existence or query authorization.
 - There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server

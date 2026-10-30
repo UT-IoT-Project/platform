@@ -13,8 +13,6 @@ import (
 	"github.com/jouleion/busyness-sensing/backend/internal/core/port"
 )
 
-const maxReadingRows = 10000
-
 var scalarFields = map[domain.SensorType]string{
 	domain.PRESSURE_SENSOR:      "pressure",
 	domain.HUMIDITY_SENSOR:      "hum",
@@ -91,12 +89,7 @@ func (r *ReadingsRepository) GetReadings(ctx context.Context, query port.Reading
 	}
 
 	pirIndex := make(map[time.Time]int)
-	count := 0
 	for rows.Next() {
-		count++
-		if count > maxReadingRows {
-			return port.ReadingsResult{}, fmt.Errorf("readings query exceeds %d rows", maxReadingRows)
-		}
 		row := rows.Value()
 		stamp, err := readingTime(row["time"])
 		if err != nil {
@@ -152,7 +145,7 @@ func readingsSQL(fields []string, wantPIR bool) string {
 		selects = append(selects, "pir_id", "value AS pir_value")
 		parts = append(parts, "SELECT "+strings.Join(selects, ", ")+" FROM pir_reading WHERE building = $building AND room = $room AND time >= $start AND time <= $end")
 	}
-	return "SELECT * FROM (" + strings.Join(parts, " UNION ALL ") + ") AS readings ORDER BY time, pir_id LIMIT 10001"
+	return "SELECT * FROM (" + strings.Join(parts, " UNION ALL ") + ") AS readings ORDER BY time, pir_id"
 }
 
 func readingTime(value any) (time.Time, error) {
