@@ -20,6 +20,9 @@ Required (unless --raw is used):
       --iaq N
       --mic-vol N       sent as "mic_vol"
       --busy-level N    integer from -128 through 127
+      --wifi-packets N  signed integer sent as "wifiPackets"
+      --ble-advertisements N
+                        signed integer sent as "bleAdvertisements"
 
 Optional:
   -c, --co2equivalent N
@@ -32,7 +35,7 @@ Optional:
 Env: MQTT_HOST (127.0.0.1), MQTT_PORT (1883), MQTT_USER, MQTT_PASS
 
 Example:
-  ./utils/insert_mqtt.sh -b gui-test -r 101 --pressure 1013.25 -H 44 -t 21.5 --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 -c 600 -p pir1=1,pir2=0
+  ./utils/insert_mqtt.sh -b gui-test -r 101 --pressure 1013.25 -H 44 -t 21.5 --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 --wifi-packets 42 --ble-advertisements 17 -c 600 -p pir1=1,pir2=0
 EOF
 }
 
@@ -53,13 +56,13 @@ build_cmd() {
   fi
 }
 
-building="" room="" pressure="" humidity="" temperature="" co2equivalent="" voc="" iaq="" mic_vol="" busy_level="" pirs="" raw="" topic="" dry_run=0
+building="" room="" pressure="" humidity="" temperature="" co2equivalent="" voc="" iaq="" mic_vol="" busy_level="" wifi_packets="" ble_advertisements="" pirs="" raw="" topic="" dry_run=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) usage; exit 0 ;;
     --dry-run) dry_run=1; shift ;;
-    -b|--building|-r|--room|--pressure|-t|--temperature|-H|--humidity|-c|--co2equivalent|--voc|--iaq|--mic-vol|--mic_vol|--busy-level|--busy_level|-p|--pirs|--raw|--topic)
+    -b|--building|-r|--room|--pressure|-t|--temperature|-H|--humidity|-c|--co2equivalent|--voc|--iaq|--mic-vol|--mic_vol|--busy-level|--busy_level|--wifi-packets|--ble-advertisements|-p|--pirs|--raw|--topic)
       [[ $# -ge 2 ]] || die "$1 needs a value"
       case $1 in
         -b|--building) building=$2 ;;
@@ -72,6 +75,8 @@ while [[ $# -gt 0 ]]; do
         --iaq) iaq=$2 ;;
         --mic-vol|--mic_vol) mic_vol=$2 ;;
         --busy-level|--busy_level) busy_level=$2 ;;
+        --wifi-packets) wifi_packets=$2 ;;
+        --ble-advertisements) ble_advertisements=$2 ;;
         -p|--pirs) pirs=$2 ;;
         --raw) raw=$2 ;;
         --topic) topic=$2 ;;
@@ -94,15 +99,19 @@ fi
 if [[ -n $raw ]]; then
   payload=$raw
 else
-  [[ -n $pressure && -n $humidity && -n $temperature && -n $voc && -n $iaq && -n $mic_vol && -n $busy_level ]] ||
-    die "pressure, humidity, temperature, voc, iaq, mic_vol, and busy_level are required (or use --raw)"
+  [[ -n $pressure && -n $humidity && -n $temperature && -n $voc && -n $iaq && -n $mic_vol && -n $busy_level && -n $wifi_packets && -n $ble_advertisements ]] ||
+    die "pressure, humidity, temperature, voc, iaq, mic_vol, busy_level, wifiPackets, and bleAdvertisements are required (or use --raw)"
   for reading in pressure humidity temperature voc iaq mic_vol; do
     is_number "${!reading}" || die "$reading must be a number"
   done
   [[ $busy_level =~ ^-?(0|[1-9][0-9]{0,2})$ ]] && ((busy_level >= -128 && busy_level <= 127)) ||
     die "busy_level must be an integer from -128 through 127"
 
-  payload="{\"pressure\":$pressure,\"humidity\":$humidity,\"temperature\":$temperature,\"voc\":$voc,\"iaq\":$iaq,\"mic_vol\":$mic_vol,\"busy_level\":$busy_level"
+  for reading in wifi_packets ble_advertisements; do
+    [[ ${!reading} =~ ^-?(0|[1-9][0-9]*)$ ]] || die "$reading must be an integer"
+  done
+
+  payload="{\"pressure\":$pressure,\"humidity\":$humidity,\"temperature\":$temperature,\"voc\":$voc,\"iaq\":$iaq,\"mic_vol\":$mic_vol,\"busy_level\":$busy_level,\"wifiPackets\":$wifi_packets,\"bleAdvertisements\":$ble_advertisements"
   if [[ -n $co2equivalent ]]; then
     is_number "$co2equivalent" || die "co2equivalent must be a number"
     payload+=",\"co2equivalent\":$co2equivalent"
