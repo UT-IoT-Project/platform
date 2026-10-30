@@ -30,5 +30,10 @@ func (s *ReadingsService) GetReadings(ctx context.Context, query port.ReadingsQu
 			return result, nil
 		}
 	}
+	for _, readings := range result.Integers {
+		if len(readings) > 0 {
+			return result, nil
+		}
+	}
 	return port.ReadingsResult{}, ErrNoReadings
 }

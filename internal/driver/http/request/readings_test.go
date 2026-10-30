@@ -183,3 +183,21 @@ func TestReadingsRejectsLegacySensorNames(t *testing.T) {
 		})
 	}
 }
+
+func TestReadingsAcceptsWirelessCountNames(t *testing.T) {
+	r := Readings{StartTime: "2026-07-01 12:00:00.000", EndTime: "2026-07-01 13:00:00.000", Sensors: []string{"wifiPackets", "bleAdvertisements"}}
+	query, err := r.ToQuery()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR}
+	if !reflect.DeepEqual(query.Sensors, want) {
+		t.Fatalf("sensors = %v, want %v", query.Sensors, want)
+	}
+	for _, name := range []string{"wifipackets", "WifiPackets", "bleadvertisements", "BLEAdvertisements"} {
+		r.Sensors = []string{name}
+		if _, err := r.ToQuery(); !errors.Is(err, ErrUnknownSensor) {
+			t.Errorf("%s: error = %v, want unknown sensor", name, err)
+		}
+	}
+}

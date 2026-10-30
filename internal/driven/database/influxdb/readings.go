@@ -26,6 +26,11 @@ var scalarFields = map[domain.SensorType]string{
 	domain.BUSY_LEVEL:           "busy_level",
 }
 
+var integerFields = map[domain.SensorType]string{
+	domain.WIFI_PACKETS_SENSOR:       "wifiPackets",
+	domain.BLE_ADVERTISEMENTS_SENSOR: "bleAdvertisements",
+}
+
 type readingsQueryClient interface {
 	QueryWithParameters(context.Context, string, influxdb3.QueryParameters, ...influxdb3.QueryOption) (*influxdb3.QueryIterator, error)
 }
@@ -54,6 +59,16 @@ func (r *ReadingsRepository) GetReadings(ctx context.Context, query port.Reading
 	for _, sensor := range query.Sensors {
 		if sensor == domain.PIR_SENSOR {
 			wantPIR = true
+			continue
+		}
+		if field, ok := integerFields[sensor]; ok {
+			if result.Integers == nil {
+				result.Integers = make(map[domain.SensorType][]domain.IntegerReading)
+			}
+			if _, seen := result.Integers[sensor]; !seen {
+				result.Integers[sensor] = []domain.IntegerReading{}
+				fields = append(fields, `"`+field+`"`)
+			}
 			continue
 		}
 		field, ok := scalarFields[sensor]
@@ -114,6 +129,17 @@ func (r *ReadingsRepository) GetReadings(ctx context.Context, query port.Reading
 				return port.ReadingsResult{}, fmt.Errorf("invalid %s reading: %w", field, err)
 			}
 			result.Scalars[sensor] = append(series, domain.ScalarReading{Timestamp: stamp, Value: value})
+		}
+		for sensor, field := range integerFields {
+			series, requested := result.Integers[sensor]
+			if !requested || row[field] == nil {
+				continue
+			}
+			value, ok := row[field].(int64)
+			if !ok {
+				return port.ReadingsResult{}, fmt.Errorf("invalid %s reading: unexpected value type %T", field, row[field])
+			}
+			result.Integers[sensor] = append(series, domain.IntegerReading{Timestamp: stamp, Value: value})
 		}
 		if wantPIR && row["pir_id"] != nil {
 			id, ok := row["pir_id"].(string)

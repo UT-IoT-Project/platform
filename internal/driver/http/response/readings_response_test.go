@@ -86,3 +86,36 @@ func TestMapReadingsRejectsInvalidValues(t *testing.T) {
 		})
 	}
 }
+
+func TestMapWirelessCountReadings(t *testing.T) {
+	stamp := time.Date(2026, 7, 1, 10, 15, 30, 250000000, time.UTC)
+	query := port.ReadingsQuery{Sensors: []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR, domain.WIFI_PACKETS_SENSOR}}
+	result := port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{
+		domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: 9007199254740993}, {Timestamp: stamp, Value: math.MinInt64}},
+		domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: math.MaxInt64}, {Timestamp: stamp, Value: 0}},
+	}}
+	got, err := MapReadings(query, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"status":200,"message":"data retrieved successfully","data":{"bleAdvertisements":[{"timestamp":"2026-07-01 12:15:30.250","value":9223372036854775807},{"timestamp":"2026-07-01 12:15:30.250","value":0}],"wifiPackets":[{"timestamp":"2026-07-01 12:15:30.250","value":9007199254740993},{"timestamp":"2026-07-01 12:15:30.250","value":-9223372036854775808}]}}`
+	if string(encoded) != want {
+		t.Fatalf("response = %s, want %s", encoded, want)
+	}
+	got, err = MapReadings(query, port.ReadingsResult{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err = json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const empty = `{"status":200,"message":"data retrieved successfully","data":{"bleAdvertisements":[],"wifiPackets":[]}}`
+	if string(encoded) != empty {
+		t.Fatalf("empty response = %s, want %s", encoded, empty)
+	}
+}

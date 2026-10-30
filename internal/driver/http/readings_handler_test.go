@@ -201,3 +201,24 @@ func TestGetReadingsForwardsContextAndQuery(t *testing.T) {
 		t.Fatal("service was not called")
 	}
 }
+
+func TestGetWirelessCountReadings(t *testing.T) {
+	stamp := time.Date(2026, 7, 1, 10, 15, 30, 250000000, time.UTC)
+	result := port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{
+		domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: 9007199254740993}},
+		domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: -7}},
+	}}
+	server := NewServer(readingsServiceFunc(func(_ context.Context, query port.ReadingsQuery) (port.ReadingsResult, error) {
+		want := []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR, domain.TEMPERATURE_SENSOR}
+		if !reflect.DeepEqual(query.Sensors, want) {
+			t.Errorf("sensors = %v, want %v", query.Sensors, want)
+		}
+		return result, nil
+	}))
+	recorder := httptest.NewRecorder()
+	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=wifiPackets&sensors=bleAdvertisements&sensors=temperature", nil))
+	const want = `{"status":200,"message":"data retrieved successfully","data":{"bleAdvertisements":[{"timestamp":"2026-07-01 12:15:30.250","value":-7}],"temperature":[],"wifiPackets":[{"timestamp":"2026-07-01 12:15:30.250","value":9007199254740993}]}}` + "\n"
+	if recorder.Code != 200 || recorder.Body.String() != want {
+		t.Fatalf("response = %d %s, want 200 %s", recorder.Code, recorder.Body.String(), want)
+	}
+}

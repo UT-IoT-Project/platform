@@ -16,8 +16,9 @@ type ReadingsQuery struct {
 }
 
 type ReadingsResult struct {
-	Scalars map[domain.SensorType][]domain.ScalarReading
-	PIR     []domain.PIRReading
+	Integers map[domain.SensorType][]domain.IntegerReading
+	Scalars  map[domain.SensorType][]domain.ScalarReading
+	PIR      []domain.PIRReading
 }
 
 type ReadingsService interface {

@@ -18,6 +18,10 @@ type scalarReadingResponse struct {
 	Timestamp string  `json:"timestamp"`
 	Value     float64 `json:"value"`
 }
+type integerReadingResponse struct {
+	Timestamp string `json:"timestamp"`
+	Value     int64  `json:"value"`
+}
 type busyLevelResponse struct {
 	Timestamp string `json:"timestamp"`
 	Value     int8   `json:"value"`
@@ -40,6 +44,7 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 	names := map[domain.SensorType]string{
 		domain.PIR_SENSOR: "PIRs", domain.PRESSURE_SENSOR: "pressure", domain.HUMIDITY_SENSOR: "humidity", domain.TEMPERATURE_SENSOR: "temperature",
 		domain.VOC_SENSOR: "voc", domain.IAQ_SENSOR: "iaq", domain.MIC_VOL_SENSOR: "mic_vol",
+		domain.WIFI_PACKETS_SENSOR: "wifiPackets", domain.BLE_ADVERTISEMENTS_SENSOR: "bleAdvertisements",
 		domain.CO2EQUIVALENT_SENSOR: "co2equivalent", domain.BUSY_LEVEL: "busy_level",
 	}
 	response := Readings{Status: 200, Message: "data retrieved successfully", Data: make(map[string]any)}
@@ -63,6 +68,12 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 					values = append(values, pirValueResponse{ID: value.ID, Value: value.Value})
 				}
 				readings = append(readings, pirReadingResponse{Timestamp: formatTime(reading.Timestamp), Values: values})
+			}
+			response.Data[name] = readings
+		case domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR:
+			readings := make([]integerReadingResponse, 0, len(result.Integers[sensor]))
+			for _, reading := range result.Integers[sensor] {
+				readings = append(readings, integerReadingResponse{Timestamp: formatTime(reading.Timestamp), Value: reading.Value})
 			}
 			response.Data[name] = readings
 		case domain.BUSY_LEVEL:

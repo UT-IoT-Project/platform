@@ -35,6 +35,8 @@ func TestReadingsServiceGetReadings(t *testing.T) {
 		{name: "populated", result: port.ReadingsResult{Scalars: scalars, PIR: pir}},
 		{name: "scalar only partial", result: port.ReadingsResult{Scalars: scalars}},
 		{name: "PIR only partial", result: port.ReadingsResult{PIR: pir}},
+		{name: "integer only partial", result: port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{domain.WIFI_PACKETS_SENSOR: {{Timestamp: stamp, Value: 9007199254740993}}}}},
+		{name: "empty integers", result: port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{domain.WIFI_PACKETS_SENSOR: {}, domain.BLE_ADVERTISEMENTS_SENSOR: {}}}, wantErr: service.ErrNoReadings},
 		{name: "nil results", wantErr: service.ErrNoReadings},
 		{name: "empty collections", result: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {}}, PIR: []domain.PIRReading{}}, wantErr: service.ErrNoReadings},
 		{name: "repository failure", err: repositoryError, wantErr: repositoryError},

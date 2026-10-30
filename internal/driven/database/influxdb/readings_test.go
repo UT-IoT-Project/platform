@@ -336,3 +336,115 @@ func TestReadingsRepositoryQueriesTelegrafScalarFields(t *testing.T) {
 		t.Fatalf("readings = %#v, want %#v", got, want)
 	}
 }
+
+func TestReadingsRepositoryPreservesWirelessCounts(t *testing.T) {
+	stamp := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "time", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
+		{Name: "wifiPackets", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: "bleAdvertisements", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: "temperature", Type: arrow.PrimitiveTypes.Float64, Nullable: true},
+		{Name: "pir_id", Type: arrow.BinaryTypes.String, Nullable: true},
+		{Name: "pir_value", Type: arrow.PrimitiveTypes.Float64, Nullable: true},
+	}, nil)
+	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
+	defer builder.Release()
+	for i := range 2 {
+		builder.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(stamp.UnixNano()))
+		if i == 0 {
+			builder.Field(1).(*array.Int64Builder).Append(9007199254740993)
+			builder.Field(2).(*array.Int64Builder).Append(-7)
+			builder.Field(3).(*array.Float64Builder).Append(21.7)
+			builder.Field(4).AppendNull()
+			builder.Field(5).AppendNull()
+		} else {
+			builder.Field(1).AppendNull()
+			builder.Field(2).AppendNull()
+			builder.Field(3).AppendNull()
+			builder.Field(4).(*array.StringBuilder).Append("north")
+			builder.Field(5).(*array.Float64Builder).Append(1)
+		}
+	}
+	record := builder.NewRecordBatch()
+	defer record.Release()
+	client := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{record: record})}
+	got, err := (&ReadingsRepository{client: client}).GetReadings(context.Background(), port.ReadingsQuery{
+		Sensors: []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR, domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR, domain.WIFI_PACKETS_SENSOR},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const wantSQL = `SELECT * FROM (SELECT time, "wifiPackets", "bleAdvertisements", temperature, NULL AS pir_id, NULL AS pir_value FROM room_telemetry WHERE building = $building AND room = $room AND time >= $start AND time <= $end UNION ALL SELECT time, NULL AS "wifiPackets", NULL AS "bleAdvertisements", NULL AS temperature, pir_id, value AS pir_value FROM pir_reading WHERE building = $building AND room = $room AND time >= $start AND time <= $end) AS readings ORDER BY time, pir_id`
+	if client.calls != 1 || client.query != wantSQL {
+		t.Fatalf("calls=%d SQL=%s, want one query %s", client.calls, client.query, wantSQL)
+	}
+	want := port.ReadingsResult{
+		Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {{Timestamp: stamp, Value: 21.7}}},
+		Integers: map[domain.SensorType][]domain.IntegerReading{
+			domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: 9007199254740993}},
+			domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: -7}},
+		},
+		PIR: []domain.PIRReading{{Timestamp: stamp, Values: []domain.PIRValue{{ID: "north", Value: 1}}}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("readings = %#v, want %#v", got, want)
+	}
+}
+
+func TestReadingsRepositoryReturnsEmptyWirelessCounts(t *testing.T) {
+	client := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{})}
+	got, err := (&ReadingsRepository{client: client}).GetReadings(context.Background(), port.ReadingsQuery{Sensors: []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sensor := range []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR} {
+		if values, ok := got.Integers[sensor]; !ok || values == nil || len(values) != 0 {
+			t.Errorf("integer %v = %#v", sensor, got.Integers)
+		}
+	}
+}
+
+func TestReadingsRepositoryRejectsNonIntegerWirelessCounts(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		sensor domain.SensorType
+	}{
+		{"wifiPackets", domain.WIFI_PACKETS_SENSOR}, {"bleAdvertisements", domain.BLE_ADVERTISEMENTS_SENSOR},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			schema := arrow.NewSchema([]arrow.Field{
+				{Name: "time", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
+				{Name: tc.name, Type: arrow.PrimitiveTypes.Float64},
+			}, nil)
+			builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
+			defer builder.Release()
+			builder.Field(0).(*array.TimestampBuilder).Append(0)
+			builder.Field(1).(*array.Float64Builder).Append(3.0)
+			record := builder.NewRecordBatch()
+			defer record.Release()
+			client := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{record: record})}
+			_, err := (&ReadingsRepository{client: client}).GetReadings(context.Background(), port.ReadingsQuery{Sensors: []domain.SensorType{tc.sensor}})
+			if err == nil || !strings.Contains(err.Error(), tc.name) || !strings.Contains(err.Error(), "float64") {
+				t.Fatalf("error = %v, want field-specific float64 type error", err)
+			}
+		})
+	}
+}
+
+func TestReadingsRepositoryDoesNotHideMissingWirelessCountColumns(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		sensor domain.SensorType
+	}{
+		{"wifiPackets", domain.WIFI_PACKETS_SENSOR}, {"bleAdvertisements", domain.BLE_ADVERTISEMENTS_SENSOR},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			failure := status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named "+tc.name+". Valid fields are room_telemetry.time.")
+			client := &schemaFailureClient{failures: []error{failure}}
+			_, err := (&ReadingsRepository{client: client}).GetReadings(context.Background(), port.ReadingsQuery{Sensors: []domain.SensorType{tc.sensor}})
+			if !errors.Is(err, failure) || len(client.queries) != 1 {
+				t.Fatalf("error = %v, calls = %d; want original error after one query", err, len(client.queries))
+			}
+		})
+	}
+}
