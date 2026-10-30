@@ -23,7 +23,7 @@ paths:
         conversion to UTC. Exactly 24 hours is allowed.
         Supply one `sensors` query parameter per requested sensor. For
         example:
-        `/api/v1/readings/zilverling/Z2402?start_time=2026-10-14%2010:00:00.000&end_time=2026-10-14%2011:00:00.000&sensors=PIR&sensors=temp`.
+        `/api/v1/readings/zilverling/Z2402?start_time=2026-10-14%2010:00:00.000&end_time=2026-10-14%2011:00:00.000&sensors=PIRs&sensors=temperature`.
       operationId: getReadings
       parameters:
         - name: building
@@ -59,9 +59,9 @@ paths:
           required: true
           description: >-
             Case-sensitive sensor names to retrieve. Supply one query
-            parameter per sensor. Supported names are PIR, pressure, hum, temp,
-            co2equivalent, voc, airresistance, mic_vol, and busy_level. PIR
-            returns all PIR readings grouped by timestamp.
+            parameter per sensor. Supported names are PIRs, pressure, humidity,
+            temperature, co2equivalent, voc, iaq, mic_vol, and busy_level.
+            PIRs returns all PIR readings grouped by timestamp.
           style: form
           explode: true
           schema:
@@ -70,21 +70,21 @@ paths:
             items:
               type: string
               enum:
-                - PIR
+                - PIRs
                 - pressure
-                - hum
-                - temp
+                - humidity
+                - temperature
                 - co2equivalent
                 - voc
-                - airresistance
+                - iaq
                 - mic_vol
                 - busy_level
           examples:
             multiple:
               summary: Request multiple sensors using repeated keys
               value:
-                - PIR
-                - temp
+                - PIRs
+                - temperature
       responses:
         '200':
           description: At least one requested sensor has readings. Every requested sensor is included; sensors without readings have empty arrays. Unrequested sensors are omitted.
@@ -99,7 +99,7 @@ paths:
                     status: 200
                     message: data retrieved successfully
                     data:
-                      PIR:
+                      PIRs:
                         - timestamp: '2026-10-14 10:15:30.250'
                           values:
                             - ID: pir-1
@@ -111,10 +111,10 @@ paths:
                       pressure:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 1013.25
-                      hum:
+                      humidity:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 48.5
-                      temp:
+                      temperature:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 21.7
                       co2equivalent:
@@ -123,7 +123,7 @@ paths:
                       voc:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 0.42
-                      airresistance:
+                      iaq:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 12345.6
                       mic_vol:
@@ -133,13 +133,13 @@ paths:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 2
                 partial:
-                  summary: Requested temp has readings while requested PIR has none
+                  summary: Requested temperature has readings while requested PIRs has none
                   value:
                     status: 200
                     message: data retrieved successfully
                     data:
-                      PIR: []
-                      temp:
+                      PIRs: []
+                      temperature:
                         - timestamp: '2026-10-14 10:16:00.000'
                           value: 21.7
         '400':
@@ -253,7 +253,7 @@ components:
       type: object
       description: Requested sensor names map to timestamped readings. PIR readings are grouped by timestamp; other sensors use scalar values.
       properties:
-        PIR:
+        PIRs:
           type: array
           items:
             $ref: '#/components/schemas/PIRReading'
@@ -261,11 +261,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Reading'
-        hum:
+        humidity:
           type: array
           items:
             $ref: '#/components/schemas/Reading'
-        temp:
+        temperature:
           type: array
           items:
             $ref: '#/components/schemas/Reading'
@@ -277,7 +277,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Reading'
-        airresistance:
+        iaq:
           type: array
           items:
             $ref: '#/components/schemas/Reading'

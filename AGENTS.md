@@ -61,12 +61,17 @@ agreed telemetry contract is:
   millisecond `timestamp` before subscriber delivery. Firmware must not send
   this property; the plugin rejects sensor messages that already contain it,
   as well as malformed sensor JSON.
-- Float32 `pressure`, `hum`, `temp`, `voc`, `airresistance`, and `mic_vol`, plus
+- Float32 `pressure`, `humidity`, `temperature`, `voc`, `iaq`, and `mic_vol`, plus
   optional float32 `co2equivalent`.
 - `busy_level`: int8 (-128 through 127).
-- `PIRs`: array entries with stable string `id` and numeric `value` properties.
+- `PIRs`: array entries with stable string `ID` and numeric `value` properties.
 
-The starter Telegraf config uses separate MQTT consumers for room readings and
+These field names are implemented in this backend and its Telegraf config.
+Firmware is maintained separately and is not updated here; coordinate adoption
+of this contract with its owner before deployment. Existing InfluxDB data under
+previous column names is not migrated.
+
+The Telegraf config uses separate MQTT consumers for room readings and
 PIR readings. It writes `room_telemetry` points with `building` and `room`
 tags, and `pir_reading` points with `building`, `room`, and `pir_id` tags.
 Numeric readings are fields. Keep PIR identity attached to the corresponding
@@ -75,7 +80,7 @@ external firmware contract changes. The parser converts float32 source
 readings to its `float` field type and `busy_level` to `int`; it does not
 enforce float32 precision or the int8 range. Both consumers use the broker
 `timestamp` as point time, including for messages queued while Telegraf is
-offline. The PIR array and each `id`/`value` pair remain unchanged. This is
+offline. The PIR array and each `ID`/`value` pair remain unchanged. This is
 broker receipt time, not device sampling time: ESP32 buffering and network
 delay before receipt can make a reading appear later than it was sampled.
 Synchronize the broker clock.
@@ -83,7 +88,7 @@ Synchronize the broker clock.
 If multiple devices can publish for one room, include a stable `device_id` in
 the topic or payload so readings remain distinguishable. InfluxDB fields are
 scalar values. For a variable-length PIR array, preserve sensor identity
-explicitly (for example, array entries with stable `id` and `value`
+explicitly (for example, array entries with stable `ID` and `value`
 properties), or transform the data into named fields before writing. Do not
 flatten anonymous values in a way that loses which PIR produced them. For
 InfluxDB, use tags for string identifiers such as building, room, device, and
@@ -152,6 +157,11 @@ A local Compose smoke test on 2026-10-30 verified MQTT → Telegraf → InfluxDB
 empty-result 404 responses, and over-24-hour 400 responses. This verifies the
 tested local setup, not a production deployment:
 
+- The API accepts `PIRs`, `pressure`, `humidity`, `temperature`,
+  `co2equivalent`, `voc`, `iaq`, `mic_vol`, and `busy_level` as sensor names.
+  Response keys use the same names; grouped PIR values retain uppercase `ID`.
+  This contract alignment is covered by helper and Go unit tests; the prior
+  local Compose smoke test above has not been repeated for these field changes.
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.
   It wires the InfluxDB readings repository into the core readings service and

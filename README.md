@@ -1,10 +1,10 @@
 # Backend
 
-This Go module is the API scaffold for the busyness sensing project. It uses a
-hexagonal layout: core services depend on ports, while HTTP and database code
+This Go module provides the readings API for the busyness sensing project.
+It uses a hexagonal layout: core services depend on ports, while HTTP and database code
 live in adapters. Docker Compose runs the Go backend, Mosquitto, Telegraf, and
 InfluxDB 3 Core. Telegraf ingests MQTT sensor readings into InfluxDB; the
-backend will provide read APIs for those readings.
+backend serves those readings through its HTTP API.
 
 | Path | Responsibility |
 | --- | --- |
@@ -16,7 +16,7 @@ backend will provide read APIs for those readings.
 | `internal/core/port/` | Interfaces for services and adapters |
 | `internal/core/service/` | Application use cases |
 | `internal/driver/http/` | HTTP API adapter and request types |
-| `internal/driven/database/influxdb/` | InfluxDB client initialization and startup health check |
+| `internal/driven/database/influxdb/` | InfluxDB client, startup health check, and readings queries |
 
 ## Local services
 
@@ -47,24 +47,30 @@ validation.
 
 Telegraf subscribes to `sensors/<buildingName>/<roomNumber>` at QoS 1. For
 example, Building BBB, room 212 publishes to `sensors/BBB/212`. The ESP32
-payload has no timestamp. A payload published by the ESP32 looks like this:
+payload has no timestamp. The required telemetry contract looks like this
+(`co2equivalent` is optional):
 
 ```json
 {
   "pressure": 1013.25,
-  "hum": 48.2,
-  "temp": 22.5,
+  "humidity": 48.2,
+  "temperature": 22.5,
   "co2equivalent": 615.0,
   "voc": 0.42,
-  "airresistance": 12345.6,
+  "iaq": 12345.6,
   "mic_vol": 0.18,
   "busy_level": 2,
   "PIRs": [
-    {"id": "pir-1", "value": 1},
-    {"id": "pir-2", "value": 0}
+    {"ID": "pir-1", "value": 1},
+    {"ID": "pir-2", "value": 0}
   ]
 }
 ```
+
+Firmware is maintained in a separate repository and is not changed here.
+Coordinate adoption of these exact field names and uppercase PIR `ID` with
+the firmware owner before deployment. Existing InfluxDB data under previous
+column names is not migrated by this change.
 
 Mosquitto's incoming-message plugin adds a top-level `timestamp` containing
 Unix milliseconds when the broker receives an accepted sensor publication.
@@ -77,17 +83,17 @@ broker receipt time, not the ESP32 sampling time: buffering on the ESP32 and
 network delay before broker receipt are not measured. Keep the broker clock
 synchronized for useful times.
 
-`pressure`, `hum`, `temp`, `co2equivalent`, `voc`, `airresistance`, and
+`pressure`, `humidity`, `temperature`, `co2equivalent`, `voc`, `iaq`, and
 `mic_vol` are float32 values from the ESP32; `co2equivalent` is optional.
 `busy_level` is an int8 value (-128 through 127). Telegraf converts the
 floating-point readings to its `float` field type and `busy_level` to `int`;
 its parser does not enforce the source's float32 precision or int8 range.
-`PIRs` is an array of objects with a stable string `id` and numeric `value`.
+`PIRs` is an array of objects with a stable string `ID` and numeric `value`.
 Telegraf writes two measurements into the `busyness_sensing` database:
 
 | Measurement | Tags | Fields |
 | --- | --- | --- |
-| `room_telemetry` | `building`, `room` | `pressure`, `hum`, `temp`, optional `co2equivalent`, `voc`, `airresistance`, `mic_vol`, `busy_level` |
+| `room_telemetry` | `building`, `room` | `pressure`, `humidity`, `temperature`, optional `co2equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level` |
 | `pir_reading` | `building`, `room`, `pir_id` | `value` |
 
 Room and building identifiers are tags so queries can filter by them. Each PIR
@@ -136,10 +142,13 @@ The OpenAPI contract is
 documented in [`docs/api/openapi.yaml`](docs/api/openapi.yaml). The contract
 uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
 `end_time`, and repeated `sensors` query parameters. Supported sensor names are
-`PIR`, `pressure`, `hum`, `temp`, `co2equivalent`, `voc`, `airresistance`,
+`PIRs`, `pressure`, `humidity`, `temperature`, `co2equivalent`, `voc`, `iaq`,
 `mic_vol`, and `busy_level`. Requests for a building or room absent from the
-database return HTTP 404. The HTTP server currently has no application routes,
-so the documented readings route remains unimplemented.
+database, or without readings for the requested sensors and time range,
+return HTTP 404; this does not establish that a room is nonexistent. The route
+is implemented through the core readings service and InfluxDB adapter. Responses
+include an array for every requested sensor, with `PIRs` grouped by timestamp
+and uppercase `ID` preserved for each PIR value.
 
 ## Raspberry Pi helper commands
 
@@ -150,7 +159,7 @@ docker compose up -d --build
 docker compose down
 
 ./utils/insert_mqtt.sh -b BBB -r 212 --pressure 1013.25 -H 48.2 -t 22.5 \
-  --voc 0.42 --airresistance 12345.6 --mic-vol 0.18 --busy-level 2 \
+  --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 \
   -c 615.0 -p pir-1=1,pir-2=0
 
 ./utils/read_mqtt.sh live -b BBB -n 5
