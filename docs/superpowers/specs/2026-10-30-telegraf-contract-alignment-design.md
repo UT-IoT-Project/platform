@@ -7,9 +7,9 @@ Make the firmware-facing telemetry sample, InfluxDB query fields, HTTP sensor na
 ## Contract
 
 - ESP32 publishes to `sensors/<buildingName>/<roomNumber>` without a timestamp. Mosquitto adds a Unix millisecond `timestamp` before Telegraf receives the event.
-- Required scalar payload fields are `temperature`, `pressure`, `humidity`, `voc`, `iaq`, `mic_vol`, and `busy_level`; `co2equivalent` remains optional. `PIRs` contains stable `id` and numeric `value` pairs.
+- Required scalar payload fields are `temperature`, `pressure`, `humidity`, `voc`, `iaq`, `mic_vol`, and `busy_level`; `co2equivalent` remains optional. `PIRs` contains stable uppercase `ID` and numeric `value` pairs.
 - Telegraf writes `room_telemetry` with `building` and `room` tags, and `pir_reading` with `building`, `room`, and `pir_id` tags. Remove the redundant `temp` parser field. Preserve broker receipt time for both measurements.
-- HTTP uses the same external sensor names. `PIRs` is the query and response name; entries expose lowercase `id`. The existing time-range request, response envelope, per-sensor arrays, grouped PIR readings, Amsterdam formatted timestamps, validation, and status behavior remain.
+- HTTP uses the same external sensor names. `PIRs` is the query and response name; entries expose uppercase `ID`. The existing time-range request, response envelope, per-sensor arrays, grouped PIR readings, Amsterdam formatted timestamps, validation, and status behavior remain.
 - Old external names `temp`, `hum`, `airresistance`, and `PIR` are rejected rather than aliased. Internal domain constants can keep their current names where they are technology-independent; the air resistance constant should become an IAQ constant for clarity.
 
 ## Approaches

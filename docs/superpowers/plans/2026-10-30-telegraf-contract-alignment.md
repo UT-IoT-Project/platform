@@ -13,10 +13,10 @@
 ## Global Constraints
 
 - Required scalar names: `temperature`, `pressure`, `humidity`, `voc`, `iaq`, `mic_vol`, `busy_level`; `co2equivalent` optional.
-- MQTT payload uses `PIRs` entries with lowercase `id` and numeric `value`; broker adds Unix millisecond `timestamp`.
+- MQTT payload uses `PIRs` entries with uppercase `ID` and numeric `value`; broker adds Unix millisecond `timestamp`.
 - Telegraf stores `room_telemetry` scalar fields and `pir_reading` with `pir_id` tag and `value` field.
 - HTTP external sensor names are `PIRs`, `temperature`, `pressure`, `humidity`, `co2equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level`.
-- Reject old HTTP names `PIR`, `temp`, `hum`, `airresistance`; output PIR entry key is lowercase `id`.
+- Reject old HTTP names `PIR`, `temp`, `hum`, `airresistance`; output PIR entry key is uppercase `ID`.
 - Preserve existing API time range, response envelope, Amsterdam formatted timestamps, grouped PIR results, and status behavior.
 - Firmware is external; document the required coordinated change and do not claim firmware was updated.
 
@@ -26,7 +26,7 @@
 - Optional `co2equivalent` omission must still produce a valid helper payload: Task 1 existing test.
 - Old HTTP sensor names must be rejected: Task 2 request test.
 - New scalar names must select actual InfluxDB columns: Task 2 repository SQL assertion.
-- PIR values must retain IDs with lowercase API key: Task 2 HTTP and response tests.
+- PIR values must retain IDs with uppercase API key: Task 2 HTTP and response tests.
 
 ---
 
@@ -36,10 +36,10 @@
 
 **Interfaces:** Produces the payload keys and InfluxDB field names in Global Constraints. Task 2 queries those field names.
 
-- [ ] Update `test_generated_payload_uses_current_contract_without_device_timestamp` to assert the new exact payload keys and values; add an assertion that old helper flags are rejected.
+- [ ] Update `test_generated_payload_uses_current_contract_without_device_timestamp` to assert the new exact payload keys and values, including uppercase `PIRs[].ID`; add an assertion that old helper flags are rejected.
 - [ ] Run `python3 -m unittest discover -s tests -p 'test_insert_mqtt.py' -v`; confirm the new contract test fails on the old helper.
 - [ ] Update the helper's flags, required fields, validation, usage, and JSON construction to emit `temperature`, `humidity`, and `iaq`, with no `temp`, `hum`, or `airresistance` aliases.
-- [ ] Remove only the redundant `temp` field from Telegraf's room JSON v2 parser; keep broker timestamp, QoS, and PIR mapping.
+- [ ] Remove only the redundant `temp` field from Telegraf's room JSON v2 parser; change the PIR object mapping from `id` to `ID` while keeping its `pir_id` tag, broker timestamp, and QoS.
 - [ ] Change the ingress timestamp test sample payload to the new keys.
 - [ ] Run the Python helper suite and `bash -n utils/insert_mqtt.sh tests/mosquitto_ingress_timestamp.sh`; expect exit 0. Commit the task.
 
@@ -49,7 +49,7 @@
 
 **Interfaces:** Consumes Task 1's InfluxDB field names. Produces external query and response names in Global Constraints. Keep core service and port signatures unchanged; rename the domain air-resistance enum to `IAQ_SENSOR` and use it throughout.
 
-- [ ] First change/add tests: request accepts each new name and rejects all old names; repository SQL selects `temperature`, `humidity`, `iaq`; response/handler JSON uses `PIRs`, `temperature`, `humidity`, `iaq`, and lowercase `id`.
+- [ ] First change/add tests: request accepts each new name and rejects all old names; repository SQL selects `temperature`, `humidity`, `iaq`; response/handler JSON uses `PIRs`, `temperature`, `humidity`, `iaq`, and uppercase `ID`.
 - [ ] Run focused Go tests with `GOCACHE=/private/tmp/busyness-go-build go test ./internal/driver/http/... ./internal/driven/database/influxdb/...`; confirm contract failures before code changes. Local socket tests may need sandbox escalation.
 - [ ] Update request mapping, domain enum, repository column mapping, response keys, and PIR JSON tag. Keep result grouping and validation unchanged.
 - [ ] Run `gofmt` on modified Go files, focused tests, then `GOCACHE=/private/tmp/busyness-go-build go test ./...` and `GOCACHE=/private/tmp/busyness-go-build go vet ./...`; expect exit 0. Commit the task.
