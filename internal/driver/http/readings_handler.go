@@ -2,10 +2,13 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/jouleion/busyness-sensing/backend/internal/core/service"
 	"github.com/jouleion/busyness-sensing/backend/internal/driver/http/request"
 )
 
@@ -23,7 +26,8 @@ func (s *Server) getReadings(c *echo.Context) error {
 	if err := echo.BindQueryParams(c, &input); err != nil {
 		return readingsError(c, http.StatusBadRequest, "Invalid timestamp format.")
 	}
-	if _, err := input.ToQuery(); err != nil {
+	query, err := input.ToQuery()
+	if err != nil {
 		switch {
 		case errors.Is(err, request.ErrInvalidTimestamp):
 			return readingsError(c, http.StatusBadRequest, "Invalid timestamp format.")
@@ -35,7 +39,21 @@ func (s *Server) getReadings(c *echo.Context) error {
 			return readingsError(c, http.StatusInternalServerError, "Internal server error.")
 		}
 	}
-	return readingsError(c, http.StatusInternalServerError, "Internal server error.")
+	if query.End.Before(query.Start) || query.End.Sub(query.Start) > 24*time.Hour {
+		return readingsError(c, http.StatusBadRequest, "Time range must be between 0 and 24 hours.")
+	}
+	result, err := s.readingsService.GetReadings(c.Request().Context(), query)
+	if errors.Is(err, service.ErrNoReadings) {
+		return readingsError(c, http.StatusNotFound, fmt.Sprintf("No data was found for room: %s. The room may not exist or may have no readings for the requested sensors and time range.", query.Room))
+	}
+	if err != nil {
+		return readingsError(c, http.StatusInternalServerError, "Internal server error.")
+	}
+	response, err := mapReadingsResponse(query, result)
+	if err != nil {
+		return readingsError(c, http.StatusInternalServerError, "Internal server error.")
+	}
+	return c.JSON(http.StatusOK, response)
 }
 
 func readingsError(c *echo.Context, status int, message string) error {

@@ -1,10 +1,14 @@
 package http
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/jouleion/busyness-sensing/backend/internal/core/port"
 )
 
 func TestGetReadingsRoute(t *testing.T) {
@@ -22,6 +26,36 @@ func TestGetReadingsRoute(t *testing.T) {
 			query:   validQuery + "&sensors=PIR&sensors=temp",
 			status:  500,
 			message: "Internal server error.",
+		},
+		{
+			name:    "exactly 24 hours",
+			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-02%2012:00:00.000&sensors=temp",
+			status:  500,
+			message: "Internal server error.",
+		},
+		{
+			name:    "more than 24 hours",
+			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-02%2012:00:00.001&sensors=temp",
+			status:  400,
+			message: "Time range must be between 0 and 24 hours.",
+		},
+		{
+			name:    "end before start",
+			query:   "start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2011:59:59.999&sensors=temp",
+			status:  400,
+			message: "Time range must be between 0 and 24 hours.",
+		},
+		{
+			name:    "24 elapsed hours across spring clock change",
+			query:   "start_time=2026-03-28%2012:00:00.000&end_time=2026-03-29%2013:00:00.000&sensors=temp",
+			status:  500,
+			message: "Internal server error.",
+		},
+		{
+			name:    "25 elapsed hours across autumn clock change",
+			query:   "start_time=2026-10-24%2012:00:00.000&end_time=2026-10-25%2012:00:00.000&sensors=temp",
+			status:  400,
+			message: "Time range must be between 0 and 24 hours.",
 		},
 		{
 			name:    "bad timestamp",
@@ -49,7 +83,9 @@ func TestGetReadingsRoute(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			server := NewServer()
+			server := NewServer(readingsServiceFunc(func(context.Context, port.ReadingsQuery) (port.ReadingsResult, error) {
+				return port.ReadingsResult{}, errors.New("database unavailable")
+			}))
 			recorder := httptest.NewRecorder()
 			server.e.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path+"?"+tc.query, nil))
 			if recorder.Code != tc.status {
