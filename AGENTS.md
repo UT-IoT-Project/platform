@@ -145,17 +145,22 @@ on HTTP details. The adapter should not decide public response formats.
 
 ## Current backend status
 
-This module is scaffolding, not a completed API:
+The readings API is implemented through the core service and InfluxDB adapter;
+live verification against the Compose stack remains outstanding:
 
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.
-  It closes the database client when the server returns.
+  It wires the InfluxDB readings repository into the core readings service and
+  HTTP server, and closes the database client when the server returns.
 - `internal/driver/http/server.go` configures Echo middleware and registers
   `GET /api/v1/readings/:building/:roomNumber`. The separate readings handler
   binds and validates the request, converts Europe/Amsterdam timestamps to UTC,
-  and currently returns the generic 500 response for valid requests because no
-  core readings service is wired. It rejects ambiguous and nonexistent local
-  times during daylight saving time changes.
+  and calls the core readings service with the request context. It returns 200
+  with requested sensor arrays when any readings exist, 404 when all requested
+  sensors have no readings, and generic 500 responses for query or mapping
+  errors. A 404 does not establish that the room is nonexistent. It rejects
+  ambiguous and nonexistent local times during daylight saving time changes,
+  reversed ranges, and ranges over 24 elapsed hours.
 - `Dockerfile.webserver` packages the backend. `docker-compose.yml` defines backend,
   Mosquitto, InfluxDB 3 Core, and Telegraf services. The derived Mosquitto
   image loads the incoming-message timestamp plugin. Telegraf configuration
@@ -166,15 +171,17 @@ This module is scaffolding, not a completed API:
 - `internal/core/domain/` defines sensor types and timestamped scalar and PIR
   reading models. `internal/core/port/` declares batch reading query/result
   types and service/repository interfaces. The InfluxDB adapter implements the
-  reading repository; core services remain unimplemented.
+  reading repository. `internal/core/service/` implements the readings use case
+  and classifies all-empty results with a no-readings error.
 - `internal/driven/database/influxdb/` initializes the InfluxDB SDK client and
   checks `/ping` through that client with a five-second timeout. Compose uses
   `/health` for its separate InfluxDB healthcheck. The reading repository runs
   one parameterized time-range query across the room and PIR measurements and
-  maps results to core types. It is not wired into the HTTP handler yet. Server
-  health does not verify database existence or query authorization.
-- There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server
-  and InfluxDB adapter remain scaffolding.
+  maps results to core types. It is wired through the core service into the
+  HTTP handler; its SQL still needs live verification against InfluxDB 3 Core.
+  Server health does not verify database existence or query authorization.
+- There is no Go MQTT subscriber. Telegraf owns ingestion. The full MQTT →
+  Telegraf → InfluxDB → HTTP flow still requires live verification.
 
 Keep this status accurate as files are added. Do not describe an endpoint,
 database adapter, or deployment as implemented until its code exists.
