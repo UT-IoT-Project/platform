@@ -20,7 +20,7 @@ type scalarReadingResponse struct {
 }
 type integerReadingResponse struct {
 	Timestamp string `json:"timestamp"`
-	Value     int64  `json:"value"`
+	Value     int32  `json:"value"`
 }
 type busyLevelResponse struct {
 	Timestamp string `json:"timestamp"`
@@ -73,7 +73,10 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 		case domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR:
 			readings := make([]integerReadingResponse, 0, len(result.Integers[sensor]))
 			for _, reading := range result.Integers[sensor] {
-				readings = append(readings, integerReadingResponse{Timestamp: formatTime(reading.Timestamp), Value: reading.Value})
+				if reading.Value < math.MinInt32 || reading.Value > math.MaxInt32 {
+					return Readings{}, fmt.Errorf("wireless count outside signed 32-bit range")
+				}
+				readings = append(readings, integerReadingResponse{Timestamp: formatTime(reading.Timestamp), Value: int32(reading.Value)})
 			}
 			response.Data[name] = readings
 		case domain.BUSY_LEVEL:

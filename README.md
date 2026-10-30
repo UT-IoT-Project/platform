@@ -72,8 +72,9 @@ payload has no timestamp. The required telemetry contract looks like this
 Firmware is maintained in a separate repository and is not changed here.
 Coordinate adoption of these exact field names and uppercase PIR `ID` with
 the firmware owner before deployment. Both `wifiPackets` and
-`bleAdvertisements` are required signed JSON integers. Coordinate the firmware
-and Telegraf rollout and drain or handle old queued publications: Telegraf can
+`bleAdvertisements` are required signed 32-bit JSON integers (-2147483648 through
+2147483647, the ESP32 `int` range). Negative values are allowed. Coordinate the
+firmware and Telegraf rollout and drain or handle old queued publications: Telegraf can
 reject legacy room payloads that lack these required fields. The database is
 refreshed when the telemetry contract changes; no historical backfill is included.
 
@@ -93,7 +94,8 @@ synchronized for useful times.
 `busy_level` is an int8 value (-128 through 127). Telegraf converts the
 floating-point readings to its `float` field type and `busy_level`,
 `wifiPackets`, and `bleAdvertisements` to `int`;
-its parser does not enforce the source's float32 precision or int8 range.
+its parser does not enforce the source's float32 precision, int8 range, or the
+wireless counts' signed 32-bit range.
 `PIRs` is an array of objects with a stable string `ID` and numeric `value`.
 Telegraf writes two measurements into the `busyness_sensing` database:
 
@@ -156,12 +158,19 @@ return HTTP 404; this does not establish that a room is nonexistent. The route
 is implemented through the core readings service and InfluxDB adapter. Responses
 include an array for every requested sensor, with `PIRs` grouped by timestamp
 and uppercase `ID` preserved for each PIR value. The two wireless counts use
-signed 64-bit integers through storage, core types, and HTTP response values;
-no nonnegative or narrower count-range restriction is imposed. The earlier
-local Compose smoke test predates these counters; their coverage is currently
-helper and Go unit tests.
+signed 32-bit JSON integer response values. Storage and core types use `int64`
+internally without float conversion; the HTTP mapper rejects out-of-range stored
+counts with a generic 500 response. The broker parses and reprints JSON numbers
+through cJSON doubles, which preserve the signed 32-bit range but cannot preserve
+arbitrary int64 values. The earlier local Compose smoke test predates these
+counters; helper and Go unit tests cover their contract, and the broker integration
+test verifies both signed 32-bit bounds survive timestamp insertion.
 
 ## Raspberry Pi helper commands
+
+The publish helper validates generated wireless counts as JSON integer syntax
+within signed 32-bit range before publishing. Its `--raw` mode sends the supplied
+payload as-is and bypasses generated-payload validation.
 
 Run these from the repository root on the Raspberry Pi:
 

@@ -15,7 +15,7 @@ READINGS = [
     "-b", "BBB", "-r", "212", "--pressure", "1013.25", "--humidity", "48.2",
     "--temperature", "22.5", "--voc", "0.42", "--iaq", "12345.6",
     "--mic-vol", "0.18", "--busy-level", "2",
-    "--wifi-packets", "9007199254740993", "--ble-advertisements", "-23",
+    "--wifi-packets", "2147483647", "--ble-advertisements", "-23",
     "--pirs", "pir-1=1,pir-2=0",
 ]
 
@@ -40,13 +40,13 @@ class InsertMqttContractTest(unittest.TestCase):
             "pressure": 1013.25, "humidity": 48.2, "temperature": 22.5,
             "co2equivalent": 615.0, "voc": 0.42,
             "iaq": 12345.6, "mic_vol": 0.18,
-            "busy_level": 2, "wifiPackets": 9007199254740993, "bleAdvertisements": -23,
+            "busy_level": 2, "wifiPackets": 2147483647, "bleAdvertisements": -23,
             "PIRs": [{"ID": "pir-1", "value": 1}, {"ID": "pir-2", "value": 0}],
         })
 
     def test_wireless_counts_require_integer_syntax(self):
         for flag in ("--wifi-packets", "--ble-advertisements"):
-            for value in ("1.5", "1.0", "1e2", "abc", "+1", "01"):
+            for value in ("1.5", "1.0", "1e2", "abc", "+1", "01", "-01", "--1"):
                 with self.subTest(flag=flag, value=value):
                     args = READINGS.copy()
                     args[args.index(flag) + 1] = value
@@ -64,17 +64,28 @@ class InsertMqttContractTest(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("required", result.stderr)
 
-    def test_wireless_counts_accept_zero(self):
-        args = READINGS.copy()
+    def test_wireless_counts_accept_signed_32_bit_values(self):
+        for value in ("-2147483648", "2147483647", "0", "-23"):
+            with self.subTest(value=value):
+                args = READINGS.copy()
+                for flag in ("--wifi-packets", "--ble-advertisements"):
+                    args[args.index(flag) + 1] = value
+                result = run_helper(*args, "--dry-run")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                payload = json.loads(result.stdout.splitlines()[1].removeprefix("payload: "))
+                for key in ("wifiPackets", "bleAdvertisements"):
+                    self.assertIs(type(payload[key]), int)
+                    self.assertEqual(payload[key], int(value))
+
+    def test_wireless_counts_reject_outside_signed_32_bit_range(self):
         for flag in ("--wifi-packets", "--ble-advertisements"):
-            args[args.index(flag) + 1] = "0"
-        result = run_helper(*args, "--dry-run")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        payload = json.loads(result.stdout.splitlines()[1].removeprefix("payload: "))
-        self.assertIs(type(payload["wifiPackets"]), int)
-        self.assertEqual(payload["wifiPackets"], 0)
-        self.assertIs(type(payload["bleAdvertisements"]), int)
-        self.assertEqual(payload["bleAdvertisements"], 0)
+            for value in ("-2147483649", "2147483648", "18446744073709551616", "-18446744073709551616"):
+                with self.subTest(flag=flag, value=value):
+                    args = READINGS.copy()
+                    args[args.index(flag) + 1] = value
+                    result = run_helper(*args, "--dry-run")
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("-2147483648 through 2147483647", result.stderr)
 
     def test_old_sensor_flags_are_rejected(self):
         for flag in ("--temp", "--hum", "--airresistance"):

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add exact integer `wifiPackets` and `bleAdvertisements` readings from ESP32 MQTT payloads through InfluxDB to the historical HTTP API.
+**Goal:** Add signed 32-bit integer `wifiPackets` and `bleAdvertisements` readings from ESP32 MQTT payloads through InfluxDB to the historical HTTP API.
 
-**Architecture:** Telegraf writes the two JSON integers as `room_telemetry` integer fields. The Go adapter keeps them as `int64` through core result types to integer JSON responses, while existing float and PIR paths remain. The database is refreshed for this contract change.
+**Architecture:** Telegraf writes the two JSON integers as `room_telemetry` integer fields. The Go adapter keeps them as `int64` through core result types, then validates the signed 32-bit external range before emitting integer JSON responses, while existing float and PIR paths remain. The database is refreshed for this contract change.
 
 **Tech Stack:** Telegraf JSON v2 TOML, Bash, Python unittest, Go, OpenAPI 3.1 YAML.
 
@@ -13,9 +13,9 @@
 ## Global Constraints
 
 - Field and API names are exactly `wifiPackets` and `bleAdvertisements` (case sensitive).
-- Both are required signed JSON integers in the ESP32 message; the broker adds Unix millisecond `timestamp`.
-- Telegraf stores both as `type = "int"` fields in `room_telemetry` with the existing `building` and `room` tags.
-- Go must preserve these readings as `int64`, including values above 2^53, and return JSON integer values.
+- Both are required signed 32-bit JSON integers (-2147483648 through 2147483647, the ESP32 `int` range) in the ESP32 message; the broker adds Unix millisecond `timestamp`.
+- Telegraf stores both as `type = "int"` fields in `room_telemetry` with the existing `building` and `room` tags; Telegraf does not enforce the signed 32-bit range.
+- Go must preserve these readings internally as `int64` without float conversion. Internal adapter tests may exercise values above 2^53; HTTP must reject values outside signed 32-bit range and use an `int32` response DTO. The broker cJSON parse/reprint path cannot preserve arbitrary int64 values.
 - HTTP accepts both in repeated `sensors` parameters and returns an array for each requested name; keep existing envelope, time format, partial/empty behavior, and range validation.
 - The database is refreshed for contract changes; do not add missing-column compatibility handling for these fields.
 - Update the MQTT helper, OpenAPI, README, AGENTS.md, and broker test fixture. Firmware lives outside this repository.
@@ -23,8 +23,8 @@
 ## Review Focus
 
 - Generated MQTT JSON has both exact names as integers and no device timestamp: Task 1 test.
-- Helper rejects fractional or non-integer counter input: Task 1 test.
-- A large int64 from InfluxDB reaches HTTP unchanged as a JSON integer: Task 2 repository and response tests.
+- Helper accepts both signed 32-bit bounds, zero, and negatives, and rejects invalid integer syntax or out-of-range counter input without arithmetic overflow: Task 1 test.
+- The repository preserves int64 exactly internally; HTTP returns both signed 32-bit bounds as JSON integers and rejects out-of-range values with generic 500: Task 2 repository, response, and handler tests.
 - A response with only integer readings is 200; all-empty integer readings yield 404: Task 2 service and handler tests.
 - An unrelated query or type error still propagates rather than becoming an empty integer series: Task 2 repository tests.
 
@@ -36,11 +36,11 @@
 
 **Interfaces:** Produces `room_telemetry.wifiPackets` and `room_telemetry.bleAdvertisements` as integer fields. Task 2 queries these exact columns.
 
-- [ ] Update `test_generated_payload_uses_current_contract_without_device_timestamp` to assert both integer keys; add a test rejecting fractional/non-integer counter flags.
+- [ ] Update `test_generated_payload_uses_current_contract_without_device_timestamp` to assert both integer keys; test both signed 32-bit bounds, zero, and negatives; reject invalid syntax and out-of-range counter flags, including oversized integers.
 - [ ] Run `python3 -m unittest discover -s tests -p 'test_insert_mqtt.py' -v` and observe contract failures before changing production files.
-- [ ] Add required `--wifi-packets` and `--ble-advertisements` helper flags, signed integer syntax checks, usage/example text, and corresponding JSON keys. Preserve uppercase PIR `ID` and no device timestamp.
+- [ ] Add required `--wifi-packets` and `--ble-advertisements` helper flags, signed 32-bit integer syntax and range checks without arithmetic overflow, usage/example text, and corresponding JSON keys. Preserve uppercase PIR `ID` and no device timestamp.
 - [ ] Add both Telegraf JSON v2 fields with `type = "int"`; keep topic tags, broker timestamp, QoS, PIR consumer, and optional CO2 unchanged.
-- [ ] Update broker ingress test publication to include both new integers.
+- [ ] Update broker ingress test publication and assertions to cover both signed 32-bit boundary values through cJSON parse/reprint; run the broker integration test when Docker is available.
 - [ ] Run the Python suite, `bash -n utils/insert_mqtt.sh tests/mosquitto_ingress_timestamp.sh`, and `git diff --check`; expect exit 0. Commit.
 
 ### Task 2: Go integer readings path
@@ -49,9 +49,9 @@
 
 **Interfaces:** Add `WIFI_PACKETS_SENSOR` and `BLE_ADVERTISEMENTS_SENSOR` domain values. Add `domain.IntegerReading{Timestamp time.Time, Value int64}` and `ReadingsResult.Integers map[domain.SensorType][]domain.IntegerReading`. Keep existing service/repository signatures. Task 3 documents the external API names and integer response schema.
 
-- [ ] Write tests first: new request names accepted; repository SQL selects both fields and decodes Arrow `int64` including 9007199254740993 exactly; type errors propagate; service distinguishes populated and all-empty integer results; response and handler emit integer JSON values under the exact names.
+- [ ] Write tests first: new request names accepted; repository SQL selects both fields and decodes Arrow `int64` including 9007199254740993 exactly; type errors propagate; service distinguishes populated and all-empty integer results; response and handler emit signed 32-bit integer JSON values under the exact names, accept both bounds, and reject out-of-range values with the existing generic 500 response.
 - [ ] Run focused Go tests before implementation with `GOCACHE=/private/tmp/busyness-go-build go test ./internal/core/service ./internal/driven/database/influxdb ./internal/driver/http/...`; observe expected failures. Local httptest sockets may require sandbox escalation.
-- [ ] Add the integer domain/result path, Telegraf column selection and strict `int64` decoding, request names, service emptiness check, and integer response DTO mapping. Keep old float/PIR behavior.
+- [ ] Add the integer domain/result path, Telegraf column selection and strict `int64` decoding, request names, service emptiness check, and range-checked `int32` response DTO mapping. Keep old float/PIR behavior.
 - [ ] Run `gofmt` on changed Go files, focused tests, `GOCACHE=/private/tmp/busyness-go-build go test ./...`, `GOCACHE=/private/tmp/busyness-go-build go vet ./...`, and `git diff --check`; expect exit 0. Commit.
 
 ### Task 3: Public contract and examples
@@ -60,6 +60,6 @@
 
 **Interfaces:** Documents the exact Task 1/2 MQTT and HTTP names, integer values, storage fields, and firmware coordination.
 
-- [ ] Add both names to the OpenAPI `sensors` enum, descriptions, response examples, and `SensorData` properties. Add an integer reading schema with `timestamp` and integer `value`; keep existing status and time-range schemas.
+- [ ] Add both names to the OpenAPI `sensors` enum, descriptions, response examples, and `SensorData` properties. Add an integer reading schema with `timestamp` and integer `value` with `format: int32`, `minimum: -2147483648`, and `maximum: 2147483647`; keep existing status and time-range schemas.
 - [ ] Update README payload, field table, API list, and helper command. Update AGENTS.md's telemetry contract and current implementation status, noting firmware changes are external and earlier smoke tests predate the counters.
 - [ ] Parse the YAML, verify the documented MQTT payload and helper output agree, audit active files for both names, and run `git diff --check`; expect exit 0. Commit.

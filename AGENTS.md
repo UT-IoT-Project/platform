@@ -64,9 +64,10 @@ agreed telemetry contract is:
 - Float32 `pressure`, `humidity`, `temperature`, `voc`, `iaq`, and `mic_vol`, plus
   optional float32 `co2equivalent`.
 - `busy_level`: int8 (-128 through 127).
-- Required `wifiPackets` and `bleAdvertisements`: signed JSON integers, stored
-  as InfluxDB `int` fields and preserved as `int64` through the core and API.
-  No nonnegative or narrower count-range restriction is imposed.
+- Required `wifiPackets` and `bleAdvertisements`: signed 32-bit JSON integers
+  (-2147483648 through 2147483647, the ESP32 `int` range). Negative values are
+  allowed. They are stored as InfluxDB `int` fields and transported internally
+  as `int64`; HTTP validates the range before emitting `int32` JSON values.
 - `PIRs`: array entries with stable string `ID` and numeric `value` properties.
 
 These field names are implemented in this backend and its Telegraf config.
@@ -84,9 +85,13 @@ value; do not flatten anonymous array values. Reconfirm this mapping if the
 external firmware contract changes. The parser converts float32 source
 readings to its `float` field type and `busy_level`, `wifiPackets`, and
 `bleAdvertisements` to `int` in `room_telemetry`; it does not
-enforce float32 precision or the int8 range. Both consumers use the broker
-`timestamp` as point time, including for messages queued while Telegraf is
-offline. The PIR array and each `ID`/`value` pair remain unchanged. This is
+enforce float32 precision, the int8 range, or the wireless counts' signed 32-bit
+range. The helper validates generated wireless counts for integer syntax and this
+range without arithmetic overflow; `--raw` bypasses generated-payload validation.
+The broker cJSON parse/reprint path uses doubles, which exactly preserve the
+signed 32-bit range but cannot preserve arbitrary int64 values. Both consumers
+use the broker `timestamp` as point time, including for messages queued while
+Telegraf is offline. The PIR array and each `ID`/`value` pair remain unchanged. This is
 broker receipt time, not device sampling time: ESP32 buffering and network
 delay before receipt can make a reading appear later than it was sampled.
 Synchronize the broker clock.
@@ -167,9 +172,12 @@ tested local setup, not a production deployment:
   `co2equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level`, `wifiPackets`, and
   `bleAdvertisements` as sensor names.
   Response keys use the same names; grouped PIR values retain uppercase `ID`.
-  Wireless counts use integer JSON values and retain signed 64-bit precision.
-  This contract alignment is covered by helper and Go unit tests; the prior
-  local Compose smoke test above predates the counters and has not been repeated
+  Wireless counts return signed 32-bit integer JSON values; stored values outside
+  that range cause a generic 500 response. The Go core and adapter retain int64
+  values internally without float conversion. This contract alignment is covered
+  by helper and Go unit tests, with both external bounds covered by the broker
+  integration test; the prior local Compose smoke test above predates the
+  counters and has not been repeated
   for these field changes.
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.

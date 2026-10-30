@@ -2,6 +2,7 @@ package response
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -91,8 +92,8 @@ func TestMapWirelessCountReadings(t *testing.T) {
 	stamp := time.Date(2026, 7, 1, 10, 15, 30, 250000000, time.UTC)
 	query := port.ReadingsQuery{Sensors: []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR, domain.WIFI_PACKETS_SENSOR}}
 	result := port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{
-		domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: 9007199254740993}, {Timestamp: stamp, Value: math.MinInt64}},
-		domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: math.MaxInt64}, {Timestamp: stamp, Value: 0}},
+		domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: -7}, {Timestamp: stamp, Value: math.MinInt32}},
+		domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: math.MaxInt32}, {Timestamp: stamp, Value: 0}},
 	}}
 	got, err := MapReadings(query, result)
 	if err != nil {
@@ -102,7 +103,7 @@ func TestMapWirelessCountReadings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"status":200,"message":"data retrieved successfully","data":{"bleAdvertisements":[{"timestamp":"2026-07-01 12:15:30.250","value":9223372036854775807},{"timestamp":"2026-07-01 12:15:30.250","value":0}],"wifiPackets":[{"timestamp":"2026-07-01 12:15:30.250","value":9007199254740993},{"timestamp":"2026-07-01 12:15:30.250","value":-9223372036854775808}]}}`
+	const want = `{"status":200,"message":"data retrieved successfully","data":{"bleAdvertisements":[{"timestamp":"2026-07-01 12:15:30.250","value":2147483647},{"timestamp":"2026-07-01 12:15:30.250","value":0}],"wifiPackets":[{"timestamp":"2026-07-01 12:15:30.250","value":-7},{"timestamp":"2026-07-01 12:15:30.250","value":-2147483648}]}}`
 	if string(encoded) != want {
 		t.Fatalf("response = %s, want %s", encoded, want)
 	}
@@ -117,5 +118,20 @@ func TestMapWirelessCountReadings(t *testing.T) {
 	const empty = `{"status":200,"message":"data retrieved successfully","data":{"bleAdvertisements":[],"wifiPackets":[]}}`
 	if string(encoded) != empty {
 		t.Fatalf("empty response = %s, want %s", encoded, empty)
+	}
+}
+
+func TestMapWirelessCountReadingsRejectsOutsideInt32Range(t *testing.T) {
+	for _, sensor := range []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR} {
+		for _, value := range []int64{math.MinInt32 - 1, math.MaxInt32 + 1, math.MinInt64, math.MaxInt64, 9007199254740993} {
+			t.Run(fmt.Sprintf("sensor_%d_value_%d", sensor, value), func(t *testing.T) {
+				result := port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{
+					sensor: {{Value: value}},
+				}}
+				if _, err := MapReadings(port.ReadingsQuery{Sensors: []domain.SensorType{sensor}}, result); err == nil {
+					t.Fatal("expected mapping error for wireless count outside signed 32-bit range")
+				}
+			})
+		}
 	}
 }

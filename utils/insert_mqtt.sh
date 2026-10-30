@@ -20,9 +20,9 @@ Required (unless --raw is used):
       --iaq N
       --mic-vol N       sent as "mic_vol"
       --busy-level N    integer from -128 through 127
-      --wifi-packets N  signed integer sent as "wifiPackets"
+      --wifi-packets N  signed 32-bit integer sent as "wifiPackets"
       --ble-advertisements N
-                        signed integer sent as "bleAdvertisements"
+                        signed 32-bit integer sent as "bleAdvertisements"
 
 Optional:
   -c, --co2equivalent N
@@ -108,7 +108,10 @@ else
     die "busy_level must be an integer from -128 through 127"
 
   for reading in wifi_packets ble_advertisements; do
-    [[ ${!reading} =~ ^-?(0|[1-9][0-9]*)$ ]] || die "$reading must be an integer"
+    count_value=${!reading}
+    # Limit digit length before arithmetic so even oversized inputs cannot overflow.
+    [[ $count_value =~ ^-?(0|[1-9][0-9]{0,9})$ ]] && ((count_value >= -2147483648 && count_value <= 2147483647)) ||
+      die "$reading must be an integer from -2147483648 through 2147483647"
   done
 
   payload="{\"pressure\":$pressure,\"humidity\":$humidity,\"temperature\":$temperature,\"voc\":$voc,\"iaq\":$iaq,\"mic_vol\":$mic_vol,\"busy_level\":$busy_level,\"wifiPackets\":$wifi_packets,\"bleAdvertisements\":$ble_advertisements"

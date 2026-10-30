@@ -62,7 +62,9 @@ paths:
             parameter per sensor. Supported names are PIRs, pressure, humidity,
             temperature, co2equivalent, voc, iaq, mic_vol, busy_level,
             wifiPackets, and bleAdvertisements. The two wireless counts return
-            signed 64-bit integer values with no nonnegative restriction.
+            signed 32-bit integer values (-2147483648 through 2147483647); negative
+            values are allowed. Stored wireless counts outside that range produce
+            the generic 500 response.
             PIRs returns all PIR readings grouped by timestamp.
           style: form
           explode: true
@@ -229,7 +231,7 @@ components:
           type: number
     IntegerReading:
       type: object
-      description: Timestamped wifiPackets or bleAdvertisements reading, preserved as a signed 64-bit integer. Negative values are allowed.
+      description: Timestamped wifiPackets or bleAdvertisements reading in the signed 32-bit ESP32 int range. Negative values are allowed.
       required:
         - timestamp
         - value
@@ -238,7 +240,9 @@ components:
           $ref: '#/components/schemas/Timestamp'
         value:
           type: integer
-          format: int64
+          format: int32
+          minimum: -2147483648
+          maximum: 2147483647
     BusyLevelReading:
       type: object
       description: Timestamped busy_level reading. The source value is an int8.
