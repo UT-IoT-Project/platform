@@ -17,11 +17,41 @@ func TestReadingsToQuery(t *testing.T) {
 		wantFrom string
 		wantTo   string
 	}{
-		{"summer", "2026-07-01 12:00:00.000", "2026-07-01 13:00:00.000", "2026-07-01T10:00:00Z", "2026-07-01T11:00:00Z"},
-		{"milliseconds", "2026-07-01 12:00:00.123", "2026-07-01 13:00:00.456", "2026-07-01T10:00:00.123Z", "2026-07-01T11:00:00.456Z"},
-		{"spring transition", "2026-03-29 01:59:59.999", "2026-03-29 03:00:00.000", "2026-03-29T00:59:59.999Z", "2026-03-29T01:00:00Z"},
-		{"autumn transition", "2026-10-25 01:59:59.999", "2026-10-25 03:00:00.000", "2026-10-24T23:59:59.999Z", "2026-10-25T02:00:00Z"},
-		{"winter", "2026-01-01 12:00:00.000", "2026-01-01 13:00:00.000", "2026-01-01T11:00:00Z", "2026-01-01T12:00:00Z"},
+		{
+			name:     "summer",
+			start:    "2026-07-01 12:00:00.000",
+			end:      "2026-07-01 13:00:00.000",
+			wantFrom: "2026-07-01T10:00:00Z",
+			wantTo:   "2026-07-01T11:00:00Z",
+		},
+		{
+			name:     "milliseconds",
+			start:    "2026-07-01 12:00:00.123",
+			end:      "2026-07-01 13:00:00.456",
+			wantFrom: "2026-07-01T10:00:00.123Z",
+			wantTo:   "2026-07-01T11:00:00.456Z",
+		},
+		{
+			name:     "spring transition",
+			start:    "2026-03-29 01:59:59.999",
+			end:      "2026-03-29 03:00:00.000",
+			wantFrom: "2026-03-29T00:59:59.999Z",
+			wantTo:   "2026-03-29T01:00:00Z",
+		},
+		{
+			name:     "autumn transition",
+			start:    "2026-10-25 01:59:59.999",
+			end:      "2026-10-25 03:00:00.000",
+			wantFrom: "2026-10-24T23:59:59.999Z",
+			wantTo:   "2026-10-25T02:00:00Z",
+		},
+		{
+			name:     "winter",
+			start:    "2026-01-01 12:00:00.000",
+			end:      "2026-01-01 13:00:00.000",
+			wantFrom: "2026-01-01T11:00:00Z",
+			wantTo:   "2026-01-01T12:00:00Z",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := Readings{
@@ -61,20 +91,76 @@ func TestReadingsToQuery(t *testing.T) {
 		edit func(*Readings)
 		want error
 	}{
-		{"missing start", func(r *Readings) { r.StartTime = "" }, ErrInvalidTimestamp},
-		{"missing end", func(r *Readings) { r.EndTime = "" }, ErrInvalidTimestamp},
-		{"malformed start", func(r *Readings) { r.StartTime = "2026-07-01T12:00:00Z" }, ErrInvalidTimestamp},
-		{"malformed end", func(r *Readings) { r.EndTime = "2026-07-01T13:00:00Z" }, ErrInvalidTimestamp},
-		{"missing milliseconds", func(r *Readings) { r.StartTime = "2026-07-01 12:00:00" }, ErrInvalidTimestamp},
-		{"extra precision", func(r *Readings) { r.StartTime = "2026-07-01 12:00:00.0001" }, ErrInvalidTimestamp},
-		{"comma fraction", func(r *Readings) { r.StartTime = "2026-07-01 12:00:00,000" }, ErrInvalidTimestamp},
-		{"impossible date", func(r *Readings) { r.EndTime = "2026-02-30 13:00:00.000" }, ErrInvalidTimestamp},
-		{"spring gap", func(r *Readings) { r.StartTime = "2026-03-29 02:30:00.000" }, ErrInvalidTimestamp},
-		{"autumn ambiguity", func(r *Readings) { r.StartTime = "2026-10-25 02:30:00.000" }, ErrInvalidTimestamp},
-		{"missing sensors", func(r *Readings) { r.Sensors = nil }, ErrEmptySensors},
-		{"empty sensor", func(r *Readings) { r.Sensors = []string{""} }, ErrEmptySensors},
-		{"unknown sensor", func(r *Readings) { r.Sensors = []string{"CO2"} }, ErrUnknownSensor},
-		{"wrong case", func(r *Readings) { r.Sensors = []string{"Temp"} }, ErrUnknownSensor},
+		{
+			name: "missing start",
+			edit: func(r *Readings) { r.StartTime = "" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "missing end",
+			edit: func(r *Readings) { r.EndTime = "" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "malformed start",
+			edit: func(r *Readings) { r.StartTime = "2026-07-01T12:00:00Z" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "malformed end",
+			edit: func(r *Readings) { r.EndTime = "2026-07-01T13:00:00Z" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "missing milliseconds",
+			edit: func(r *Readings) { r.StartTime = "2026-07-01 12:00:00" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "extra precision",
+			edit: func(r *Readings) { r.StartTime = "2026-07-01 12:00:00.0001" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "comma fraction",
+			edit: func(r *Readings) { r.StartTime = "2026-07-01 12:00:00,000" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "impossible date",
+			edit: func(r *Readings) { r.EndTime = "2026-02-30 13:00:00.000" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "spring gap",
+			edit: func(r *Readings) { r.StartTime = "2026-03-29 02:30:00.000" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "autumn ambiguity",
+			edit: func(r *Readings) { r.StartTime = "2026-10-25 02:30:00.000" },
+			want: ErrInvalidTimestamp,
+		},
+		{
+			name: "missing sensors",
+			edit: func(r *Readings) { r.Sensors = nil },
+			want: ErrEmptySensors,
+		},
+		{
+			name: "empty sensor",
+			edit: func(r *Readings) { r.Sensors = []string{""} },
+			want: ErrEmptySensors,
+		},
+		{
+			name: "unknown sensor",
+			edit: func(r *Readings) { r.Sensors = []string{"CO2"} },
+			want: ErrUnknownSensor,
+		},
+		{
+			name: "wrong case",
+			edit: func(r *Readings) { r.Sensors = []string{"Temp"} },
+			want: ErrUnknownSensor,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := valid

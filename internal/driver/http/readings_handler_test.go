@@ -17,11 +17,36 @@ func TestGetReadingsRoute(t *testing.T) {
 		status  int
 		message string
 	}{
-		{"valid request", validQuery + "&sensors=PIR&sensors=temp", 500, "Internal server error."},
-		{"bad timestamp", "start_time=2026-07-01T12:00:00Z&end_time=2026-07-01%2013:00:00.000&sensors=temp", 400, "Invalid timestamp format."},
-		{"missing sensors", validQuery, 400, "Empty list of sensors are not allowed."},
-		{"empty sensors", validQuery + "&sensors=", 400, "Empty list of sensors are not allowed."},
-		{"unknown repeated sensor", validQuery + "&sensors=temp&sensors=CO2", 400, "Unknown sensor name."},
+		{
+			name:    "valid request",
+			query:   validQuery + "&sensors=PIR&sensors=temp",
+			status:  500,
+			message: "Internal server error.",
+		},
+		{
+			name:    "bad timestamp",
+			query:   "start_time=2026-07-01T12:00:00Z&end_time=2026-07-01%2013:00:00.000&sensors=temp",
+			status:  400,
+			message: "Invalid timestamp format.",
+		},
+		{
+			name:    "missing sensors",
+			query:   validQuery,
+			status:  400,
+			message: "Empty list of sensors are not allowed.",
+		},
+		{
+			name:    "empty sensors",
+			query:   validQuery + "&sensors=",
+			status:  400,
+			message: "Empty list of sensors are not allowed.",
+		},
+		{
+			name:    "unknown repeated sensor",
+			query:   validQuery + "&sensors=temp&sensors=CO2",
+			status:  400,
+			message: "Unknown sensor name.",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := NewServer()

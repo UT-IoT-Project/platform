@@ -50,12 +50,36 @@ func (r *oneBatchReader) Schema() *arrow.Schema          { return r.record.Schem
 func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 	stamp := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
 	schema := arrow.NewSchema([]arrow.Field{
-		{Name: "time", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}, Nullable: false},
-		{Name: "pressure", Type: arrow.PrimitiveTypes.Float64, Nullable: true},
-		{Name: "hum", Type: arrow.PrimitiveTypes.Float64, Nullable: true},
-		{Name: "busy_level", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
-		{Name: "pir_id", Type: arrow.BinaryTypes.String, Nullable: true},
-		{Name: "pir_value", Type: arrow.PrimitiveTypes.Float64, Nullable: true},
+		{
+			Name:     "time",
+			Type:     &arrow.TimestampType{Unit: arrow.Nanosecond},
+			Nullable: false,
+		},
+		{
+			Name:     "pressure",
+			Type:     arrow.PrimitiveTypes.Float64,
+			Nullable: true,
+		},
+		{
+			Name:     "hum",
+			Type:     arrow.PrimitiveTypes.Float64,
+			Nullable: true,
+		},
+		{
+			Name:     "busy_level",
+			Type:     arrow.PrimitiveTypes.Int64,
+			Nullable: true,
+		},
+		{
+			Name:     "pir_id",
+			Type:     arrow.BinaryTypes.String,
+			Nullable: true,
+		},
+		{
+			Name:     "pir_value",
+			Type:     arrow.PrimitiveTypes.Float64,
+			Nullable: true,
+		},
 	}, nil)
 	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
 	defer builder.Release()
@@ -64,9 +88,18 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 		id                 *string
 		pirValue           *float64
 	}{
-		{pressure: ptr(1012.5), humidity: ptr(45.0)},
-		{id: ptr("north"), pirValue: ptr(1.0)},
-		{id: ptr("south"), pirValue: ptr(0.0)},
+		{
+			pressure: ptr(1012.5),
+			humidity: ptr(45.0),
+		},
+		{
+			id:       ptr("north"),
+			pirValue: ptr(1.0),
+		},
+		{
+			id:       ptr("south"),
+			pirValue: ptr(0.0),
+		},
 	} {
 		builder.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(stamp.UnixNano()))
 		appendFloat(builder.Field(1).(*array.Float64Builder), row.pressure)
@@ -125,14 +158,31 @@ func TestReadingsRepositoryReturnsEmptySeriesForRequestedSensors(t *testing.T) {
 		wantDatabaseCalls int
 	}{
 		"requested scalar returns an empty series without querying PIR": {
-			query:             port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.TEMPERATURE_SENSOR}},
-			wantResult:        port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {}}},
+			query: port.ReadingsQuery{
+				Building: "B",
+				Room:     "R",
+				Start:    start,
+				End:      start.Add(time.Hour),
+				Sensors:  []domain.SensorType{domain.TEMPERATURE_SENSOR},
+			},
+			wantResult: port.ReadingsResult{
+				Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {}},
+			},
 			unwantedMeasure:   "pir_reading",
 			wantDatabaseCalls: 1,
 		},
 		"requested PIR returns an empty series without querying room telemetry": {
-			query:             port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}},
-			wantResult:        port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
+			query: port.ReadingsQuery{
+				Building: "B",
+				Room:     "R",
+				Start:    start,
+				End:      start.Add(time.Hour),
+				Sensors:  []domain.SensorType{domain.PIR_SENSOR},
+			},
+			wantResult: port.ReadingsResult{
+				Scalars: map[domain.SensorType][]domain.ScalarReading{},
+				PIR:     []domain.PIRReading{},
+			},
 			unwantedMeasure:   "room_telemetry",
 			wantDatabaseCalls: 1,
 		},
