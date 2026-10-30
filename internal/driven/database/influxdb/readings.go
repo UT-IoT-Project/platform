@@ -47,10 +47,6 @@ func (r *ReadingsRepository) GetReadings(ctx context.Context, query port.Reading
 	if r == nil || r.client == nil {
 		return result, errors.New("influxdb readings client is nil")
 	}
-	if query.Building == "" || query.Room == "" || query.Start.IsZero() || !query.Start.Before(query.End) || len(query.Sensors) == 0 {
-		return result, errors.New("invalid readings query")
-	}
-
 	fields := make([]string, 0, len(query.Sensors))
 	wantPIR := false
 	for _, sensor := range query.Sensors {

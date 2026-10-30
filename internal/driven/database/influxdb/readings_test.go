@@ -182,21 +182,40 @@ func TestReadingsRepositoryReturnsEmptySeriesForRequestedSensors(t *testing.T) {
 	}
 }
 
-func TestReadingsRepositoryRejectsInvalidQueryBeforeDatabaseCall(t *testing.T) {
+func TestReadingsRepositoryLeavesRequestValidationToCaller(t *testing.T) {
+	start := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name  string
+		query port.ReadingsQuery
+	}{
+		{name: "empty building", query: port.ReadingsQuery{Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}}},
+		{name: "empty room", query: port.ReadingsQuery{Building: "B", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}}},
+		{name: "zero start", query: port.ReadingsQuery{Building: "B", Room: "R", End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}}},
+		{name: "reversed range", query: port.ReadingsQuery{Building: "B", Room: "R", Start: start.Add(time.Hour), End: start, Sensors: []domain.SensorType{domain.PIR_SENSOR}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{})}
+			repo := &ReadingsRepository{client: fake}
+			if _, err := repo.GetReadings(context.Background(), tc.query); err != nil {
+				t.Fatal(err)
+			}
+			if fake.calls != 1 {
+				t.Fatalf("expected one database query, got %d", fake.calls)
+			}
+		})
+	}
+}
+
+func TestReadingsRepositoryRejectsUnsupportedSensorType(t *testing.T) {
 	fake := &fakeReadingsClient{}
 	repo := &ReadingsRepository{client: fake}
 	start := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
-	for _, query := range []port.ReadingsQuery{
-		{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour)},
-		{Building: "B", Room: "R", Start: start, End: start, Sensors: []domain.SensorType{domain.PIR_SENSOR}},
-		{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.SensorType(100)}},
-	} {
-		if _, err := repo.GetReadings(context.Background(), query); err == nil {
-			t.Fatalf("expected error for %#v", query)
-		}
+	query := port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.SensorType(100)}}
+	if _, err := repo.GetReadings(context.Background(), query); err == nil || !strings.Contains(err.Error(), "unsupported sensor type") {
+		t.Fatalf("expected unsupported sensor error, got %v", err)
 	}
 	if fake.calls != 0 {
-		t.Fatalf("invalid queries reached database %d times", fake.calls)
+		t.Fatalf("unsupported sensor reached database %d times", fake.calls)
 	}
 }
 
