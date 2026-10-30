@@ -126,6 +126,7 @@ clients, or MQTT libraries.
 | `internal/core/service/` | Use cases and application rules. Depend on ports, not concrete adapters. |
 | `internal/driver/http/` | Inbound HTTP adapter: routes, handlers, request/response DTOs, and transport status mapping. |
 | `internal/driver/http/request/` | HTTP request DTOs and transport-level validation types. |
+| `internal/driver/http/response/` | HTTP response DTOs and mapping from core readings to API data. |
 | `internal/driven/database/influxdb/` | Outbound InfluxDB adapter implementing core ports and mapping query results to core types. |
 
 For a new read endpoint, keep the flow in this direction:

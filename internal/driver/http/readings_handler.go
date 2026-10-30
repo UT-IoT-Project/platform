@@ -10,6 +10,7 @@ import (
 
 	"github.com/jouleion/busyness-sensing/backend/internal/core/service"
 	"github.com/jouleion/busyness-sensing/backend/internal/driver/http/request"
+	"github.com/jouleion/busyness-sensing/backend/internal/driver/http/response"
 )
 
 type errorResponse struct {
@@ -49,11 +50,11 @@ func (s *Server) getReadings(c *echo.Context) error {
 	if err != nil {
 		return readingsError(c, http.StatusInternalServerError, "Internal server error.")
 	}
-	response, err := mapReadingsResponse(query, result)
+	readings, err := response.MapReadings(query, result)
 	if err != nil {
 		return readingsError(c, http.StatusInternalServerError, "Internal server error.")
 	}
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, readings)
 }
 
 func readingsError(c *echo.Context, status int, message string) error {

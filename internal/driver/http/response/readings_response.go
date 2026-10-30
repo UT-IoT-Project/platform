@@ -1,4 +1,4 @@
-package http
+package response
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"github.com/jouleion/busyness-sensing/backend/internal/core/port"
 )
 
-type readingsResponse struct {
+type Readings struct {
 	Status  int            `json:"status"`
 	Message string         `json:"message"`
 	Data    map[string]any `json:"data"`
@@ -31,10 +31,10 @@ type pirReadingResponse struct {
 	Values    []pirValueResponse `json:"values"`
 }
 
-func mapReadingsResponse(query port.ReadingsQuery, result port.ReadingsResult) (readingsResponse, error) {
+func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings, error) {
 	location, err := time.LoadLocation("Europe/Amsterdam")
 	if err != nil {
-		return readingsResponse{}, err
+		return Readings{}, err
 	}
 	formatTime := func(timestamp time.Time) string { return timestamp.In(location).Format("2006-01-02 15:04:05.000") }
 	names := map[domain.SensorType]string{
@@ -42,11 +42,11 @@ func mapReadingsResponse(query port.ReadingsQuery, result port.ReadingsResult) (
 		domain.VOC_SENSOR: "voc", domain.AIRRESISTANCE_SENSOR: "airresistance", domain.MIC_VOL_SENSOR: "mic_vol",
 		domain.CO2EQUIVALENT_SENSOR: "co2equivalent", domain.BUSY_LEVEL: "busy_level",
 	}
-	response := readingsResponse{Status: 200, Message: "data retrieved successfully", Data: make(map[string]any)}
+	response := Readings{Status: 200, Message: "data retrieved successfully", Data: make(map[string]any)}
 	for _, sensor := range query.Sensors {
 		name, ok := names[sensor]
 		if !ok {
-			return readingsResponse{}, fmt.Errorf("unsupported sensor %d", sensor)
+			return Readings{}, fmt.Errorf("unsupported sensor %d", sensor)
 		}
 		if _, exists := response.Data[name]; exists {
 			continue
@@ -58,7 +58,7 @@ func mapReadingsResponse(query port.ReadingsQuery, result port.ReadingsResult) (
 				values := make([]pirValueResponse, 0, len(reading.Values))
 				for _, value := range reading.Values {
 					if !finite(value.Value) {
-						return readingsResponse{}, fmt.Errorf("invalid PIR value")
+						return Readings{}, fmt.Errorf("invalid PIR value")
 					}
 					values = append(values, pirValueResponse{ID: value.ID, Value: value.Value})
 				}
@@ -69,7 +69,7 @@ func mapReadingsResponse(query port.ReadingsQuery, result port.ReadingsResult) (
 			readings := make([]busyLevelResponse, 0, len(result.Scalars[sensor]))
 			for _, reading := range result.Scalars[sensor] {
 				if !finite(reading.Value) || reading.Value < -128 || reading.Value > 127 || math.Trunc(reading.Value) != reading.Value {
-					return readingsResponse{}, fmt.Errorf("invalid busy level")
+					return Readings{}, fmt.Errorf("invalid busy level")
 				}
 				readings = append(readings, busyLevelResponse{Timestamp: formatTime(reading.Timestamp), Value: int8(reading.Value)})
 			}
@@ -78,7 +78,7 @@ func mapReadingsResponse(query port.ReadingsQuery, result port.ReadingsResult) (
 			readings := make([]scalarReadingResponse, 0, len(result.Scalars[sensor]))
 			for _, reading := range result.Scalars[sensor] {
 				if !finite(reading.Value) {
-					return readingsResponse{}, fmt.Errorf("invalid scalar value")
+					return Readings{}, fmt.Errorf("invalid scalar value")
 				}
 				readings = append(readings, scalarReadingResponse{Timestamp: formatTime(reading.Timestamp), Value: reading.Value})
 			}
