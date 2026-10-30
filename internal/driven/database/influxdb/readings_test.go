@@ -69,7 +69,7 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 			Nullable: true,
 		},
 		{
-			Name:     "busy_level",
+			Name:     "busynessLabel",
 			Type:     arrow.PrimitiveTypes.Int64,
 			Nullable: true,
 		},
@@ -96,11 +96,11 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 			humidity: ptr(45.0),
 		},
 		{
-			id:       ptr("north"),
+			id:       ptr("1"),
 			pirValue: ptr(1.0),
 		},
 		{
-			id:       ptr("south"),
+			id:       ptr("2"),
 			pirValue: ptr(0.0),
 		},
 	} {
@@ -132,6 +132,11 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 	if fake.calls != 1 || !strings.Contains(fake.query, "UNION ALL") {
 		t.Fatalf("expected one batch query, got calls=%d query=%q", fake.calls, fake.query)
 	}
+	for _, field := range []string{`"co2Equivalent"`, `"busynessLabel"`, "activity AS pir_value"} {
+		if !strings.Contains(fake.query, field) {
+			t.Errorf("query missing firmware field %q: %s", field, fake.query)
+		}
+	}
 	if strings.Contains(fake.query, query.Building) || fake.params["building"] != query.Building || fake.params["room"] != query.Room {
 		t.Fatalf("location must be parameterized: query=%q params=%v", fake.query, fake.params)
 	}
@@ -145,7 +150,7 @@ func TestReadingsRepositoryCombinesScalarAndPIRRows(t *testing.T) {
 			domain.BUSY_LEVEL:           {{Timestamp: stamp, Value: 3}},
 			domain.CO2EQUIVALENT_SENSOR: {},
 		},
-		PIR: []domain.PIRReading{{Timestamp: stamp, Values: []domain.PIRValue{{ID: "north", Value: 1}, {ID: "south", Value: 0}}}},
+		PIR: []domain.PIRReading{{Timestamp: stamp, Values: []domain.PIRValue{{ID: "1", Value: 1}, {ID: "2", Value: 0}}}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v, want %#v", got, want)
@@ -242,8 +247,6 @@ func TestReadingsRepositoryHandlesAbsentTelemetrySchema(t *testing.T) {
 		{"room table", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, "FROM room_telemetry"},
 		{"PIR table", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.pir_reading' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, "FROM pir_reading"},
 		{"both tables", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"), status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.pir_reading' not found")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.PIR_SENSOR}, ""},
-		{"optional column", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2equivalent. Valid fields are room_telemetry.temperature.")}, []domain.SensorType{domain.TEMPERATURE_SENSOR, domain.CO2EQUIVALENT_SENSOR}, "co2equivalent"},
-		{"only optional column", []error{status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2equivalent. Valid fields are room_telemetry.temperature.")}, []domain.SensorType{domain.CO2EQUIVALENT_SENSOR}, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := &schemaFailureClient{failures: tc.failures}
@@ -286,6 +289,7 @@ func (f *schemaFailureClient) QueryWithParameters(_ context.Context, q string, _
 func TestReadingsRepositoryDoesNotHideOtherSchemaOrTransportErrors(t *testing.T) {
 	for _, err := range []error{
 		status.Error(codes.PermissionDenied, "Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"),
+		status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named co2Equivalent. Valid fields are room_telemetry.time."),
 		status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named temperature. Valid fields are room_telemetry.time."),
 		status.Error(codes.InvalidArgument, "Error while logically planning query: Error during planning: table 'public.iox.other' not found"),
 		errors.New("Error while logically planning query: Error during planning: table 'public.iox.room_telemetry' not found"),
@@ -342,7 +346,7 @@ func TestReadingsRepositoryPreservesWirelessCounts(t *testing.T) {
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "time", Type: &arrow.TimestampType{Unit: arrow.Nanosecond}},
 		{Name: "wifiPackets", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
-		{Name: "bleAdvertisements", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: "bleAdverts", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
 		{Name: "temperature", Type: arrow.PrimitiveTypes.Float64, Nullable: true},
 		{Name: "pir_id", Type: arrow.BinaryTypes.String, Nullable: true},
 		{Name: "pir_value", Type: arrow.PrimitiveTypes.Float64, Nullable: true},
@@ -352,8 +356,8 @@ func TestReadingsRepositoryPreservesWirelessCounts(t *testing.T) {
 	for i := range 2 {
 		builder.Field(0).(*array.TimestampBuilder).Append(arrow.Timestamp(stamp.UnixNano()))
 		if i == 0 {
-			builder.Field(1).(*array.Int64Builder).Append(9007199254740993)
-			builder.Field(2).(*array.Int64Builder).Append(-7)
+			builder.Field(1).(*array.Int64Builder).Append(4294967295)
+			builder.Field(2).(*array.Int64Builder).Append(0)
 			builder.Field(3).(*array.Float64Builder).Append(21.7)
 			builder.Field(4).AppendNull()
 			builder.Field(5).AppendNull()
@@ -361,7 +365,7 @@ func TestReadingsRepositoryPreservesWirelessCounts(t *testing.T) {
 			builder.Field(1).AppendNull()
 			builder.Field(2).AppendNull()
 			builder.Field(3).AppendNull()
-			builder.Field(4).(*array.StringBuilder).Append("north")
+			builder.Field(4).(*array.StringBuilder).Append("1")
 			builder.Field(5).(*array.Float64Builder).Append(1)
 		}
 	}
@@ -374,17 +378,17 @@ func TestReadingsRepositoryPreservesWirelessCounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const wantSQL = `SELECT * FROM (SELECT time, "wifiPackets", "bleAdvertisements", temperature, NULL AS pir_id, NULL AS pir_value FROM room_telemetry WHERE building = $building AND room = $room AND time >= $start AND time <= $end UNION ALL SELECT time, NULL AS "wifiPackets", NULL AS "bleAdvertisements", NULL AS temperature, pir_id, value AS pir_value FROM pir_reading WHERE building = $building AND room = $room AND time >= $start AND time <= $end) AS readings ORDER BY time, pir_id`
+	const wantSQL = `SELECT * FROM (SELECT time, "wifiPackets", "bleAdverts", temperature, NULL AS pir_id, NULL AS pir_value FROM room_telemetry WHERE building = $building AND room = $room AND time >= $start AND time <= $end UNION ALL SELECT time, NULL AS "wifiPackets", NULL AS "bleAdverts", NULL AS temperature, pir_id, activity AS pir_value FROM pir_reading WHERE building = $building AND room = $room AND time >= $start AND time <= $end) AS readings ORDER BY time, pir_id`
 	if client.calls != 1 || client.query != wantSQL {
 		t.Fatalf("calls=%d SQL=%s, want one query %s", client.calls, client.query, wantSQL)
 	}
 	want := port.ReadingsResult{
 		Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {{Timestamp: stamp, Value: 21.7}}},
 		Integers: map[domain.SensorType][]domain.IntegerReading{
-			domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: 9007199254740993}},
-			domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: -7}},
+			domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: 4294967295}},
+			domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: 0}},
 		},
-		PIR: []domain.PIRReading{{Timestamp: stamp, Values: []domain.PIRValue{{ID: "north", Value: 1}}}},
+		PIR: []domain.PIRReading{{Timestamp: stamp, Values: []domain.PIRValue{{ID: "1", Value: 1}}}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("readings = %#v, want %#v", got, want)
@@ -409,7 +413,7 @@ func TestReadingsRepositoryRejectsNonIntegerWirelessCounts(t *testing.T) {
 		name   string
 		sensor domain.SensorType
 	}{
-		{"wifiPackets", domain.WIFI_PACKETS_SENSOR}, {"bleAdvertisements", domain.BLE_ADVERTISEMENTS_SENSOR},
+		{"wifiPackets", domain.WIFI_PACKETS_SENSOR}, {"bleAdverts", domain.BLE_ADVERTISEMENTS_SENSOR},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			schema := arrow.NewSchema([]arrow.Field{
@@ -436,7 +440,7 @@ func TestReadingsRepositoryDoesNotHideMissingWirelessCountColumns(t *testing.T) 
 		name   string
 		sensor domain.SensorType
 	}{
-		{"wifiPackets", domain.WIFI_PACKETS_SENSOR}, {"bleAdvertisements", domain.BLE_ADVERTISEMENTS_SENSOR},
+		{"wifiPackets", domain.WIFI_PACKETS_SENSOR}, {"bleAdverts", domain.BLE_ADVERTISEMENTS_SENSOR},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			failure := status.Error(codes.InvalidArgument, "Error while logically planning query: Schema error: No field named "+tc.name+". Valid fields are room_telemetry.time.")

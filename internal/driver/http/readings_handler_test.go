@@ -35,7 +35,7 @@ func TestGetReadingsRoute(t *testing.T) {
 	}{
 		{
 			name:    "valid request",
-			query:   validQuery + "&sensors=PIRs&sensors=temperature",
+			query:   validQuery + "&sensors=pirs&sensors=temperature",
 			status:  500,
 			message: "Internal server error.",
 		},
@@ -115,12 +115,12 @@ func TestGetReadingsSuccess(t *testing.T) {
 	timestamp := time.Date(2026, 7, 1, 10, 15, 30, 250000000, time.UTC)
 	result := port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{
 		domain.TEMPERATURE_SENSOR: {{Timestamp: timestamp, Value: 21.7}},
-		domain.BUSY_LEVEL:         {{Timestamp: timestamp, Value: -128}},
+		domain.BUSY_LEVEL:         {{Timestamp: timestamp, Value: 255}},
 		domain.IAQ_SENSOR:         {{Timestamp: timestamp, Value: 50}},
-	}, PIR: []domain.PIRReading{{Timestamp: timestamp, Values: []domain.PIRValue{{ID: "pir-1", Value: 1}, {ID: "pir-2", Value: 0}}}}}
+	}, PIR: []domain.PIRReading{{Timestamp: timestamp, Values: []domain.PIRValue{{ID: "1", Value: 1}, {ID: "2", Value: 0}}}}}
 	server := NewServer(readingsServiceFunc(func(context.Context, port.ReadingsQuery) (port.ReadingsResult, error) { return result, nil }))
 	recorder := httptest.NewRecorder()
-	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=PIRs&sensors=busy_level&sensors=humidity&sensors=iaq&sensors=temperature", nil))
+	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=pirs&sensors=busynessLabel&sensors=humidity&sensors=iaq&sensors=temperature", nil))
 	if recorder.Code != 200 {
 		t.Fatalf("status = %d, want 200; body = %s", recorder.Code, recorder.Body.String())
 	}
@@ -129,7 +129,7 @@ func TestGetReadingsSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	var want any
-	if err := json.Unmarshal([]byte(`{"status":200,"message":"data retrieved successfully","data":{"temperature":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}],"busy_level":[{"timestamp":"2026-07-01 12:15:30.250","value":-128}],"PIRs":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":"pir-1","value":1},{"ID":"pir-2","value":0}]}],"humidity":[],"iaq":[{"timestamp":"2026-07-01 12:15:30.250","value":50}]}}`), &want); err != nil {
+	if err := json.Unmarshal([]byte(`{"status":200,"message":"data retrieved successfully","data":{"temperature":[{"timestamp":"2026-07-01 12:15:30.250","value":21.7}],"busynessLabel":[{"timestamp":"2026-07-01 12:15:30.250","value":255}],"pirs":[{"timestamp":"2026-07-01 12:15:30.250","values":[{"ID":1,"activity":1},{"ID":2,"activity":0}]}],"humidity":[],"iaq":[{"timestamp":"2026-07-01 12:15:30.250","value":50}]}}`), &want); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -162,7 +162,7 @@ func TestGetReadingsErrors(t *testing.T) {
 		{
 			name: "out-of-range wireless count",
 			result: port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{
-				domain.WIFI_PACKETS_SENSOR: {{Value: math.MaxInt32 + 1}},
+				domain.WIFI_PACKETS_SENSOR: {{Value: math.MaxUint32 + 1}},
 			}},
 			status:  500,
 			message: "Internal server error.",
@@ -179,7 +179,7 @@ func TestGetReadingsErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server := NewServer(readingsServiceFunc(func(context.Context, port.ReadingsQuery) (port.ReadingsResult, error) { return tc.result, tc.err }))
 			recorder := httptest.NewRecorder()
-			server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=PIRs&sensors=busy_level&sensors=wifiPackets", nil))
+			server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=temperature&sensors=pirs&sensors=busynessLabel&sensors=wifiPackets", nil))
 			var got errorResponse
 			if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
 				t.Fatal(err)
@@ -213,8 +213,8 @@ func TestGetReadingsForwardsContextAndQuery(t *testing.T) {
 func TestGetWirelessCountReadings(t *testing.T) {
 	stamp := time.Date(2026, 7, 1, 10, 15, 30, 250000000, time.UTC)
 	result := port.ReadingsResult{Integers: map[domain.SensorType][]domain.IntegerReading{
-		domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: 2147483647}},
-		domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: -7}},
+		domain.WIFI_PACKETS_SENSOR:       {{Timestamp: stamp, Value: 4294967295}},
+		domain.BLE_ADVERTISEMENTS_SENSOR: {{Timestamp: stamp, Value: 0}},
 	}}
 	server := NewServer(readingsServiceFunc(func(_ context.Context, query port.ReadingsQuery) (port.ReadingsResult, error) {
 		want := []domain.SensorType{domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR, domain.TEMPERATURE_SENSOR}
@@ -224,8 +224,8 @@ func TestGetWirelessCountReadings(t *testing.T) {
 		return result, nil
 	}))
 	recorder := httptest.NewRecorder()
-	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=wifiPackets&sensors=bleAdvertisements&sensors=temperature", nil))
-	const want = `{"status":200,"message":"data retrieved successfully","data":{"bleAdvertisements":[{"timestamp":"2026-07-01 12:15:30.250","value":-7}],"temperature":[],"wifiPackets":[{"timestamp":"2026-07-01 12:15:30.250","value":2147483647}]}}` + "\n"
+	server.e.ServeHTTP(recorder, httptest.NewRequest("GET", "/api/v1/readings/zilverling/Z2402?start_time=2026-07-01%2012:00:00.000&end_time=2026-07-01%2013:00:00.000&sensors=wifiPackets&sensors=bleAdverts&sensors=temperature", nil))
+	const want = `{"status":200,"message":"data retrieved successfully","data":{"bleAdverts":[{"timestamp":"2026-07-01 12:15:30.250","value":0}],"temperature":[],"wifiPackets":[{"timestamp":"2026-07-01 12:15:30.250","value":4294967295}]}}` + "\n"
 	if recorder.Code != 200 || recorder.Body.String() != want {
 		t.Fatalf("response = %d %s, want 200 %s", recorder.Code, recorder.Body.String(), want)
 	}

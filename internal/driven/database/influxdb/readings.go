@@ -22,13 +22,13 @@ var scalarFields = map[domain.SensorType]string{
 	domain.VOC_SENSOR:           "voc",
 	domain.IAQ_SENSOR:           "iaq",
 	domain.MIC_VOL_SENSOR:       "mic_vol",
-	domain.CO2EQUIVALENT_SENSOR: "co2equivalent",
-	domain.BUSY_LEVEL:           "busy_level",
+	domain.CO2EQUIVALENT_SENSOR: "co2Equivalent",
+	domain.BUSY_LEVEL:           "busynessLabel",
 }
 
 var integerFields = map[domain.SensorType]string{
 	domain.WIFI_PACKETS_SENSOR:       "wifiPackets",
-	domain.BLE_ADVERTISEMENTS_SENSOR: "bleAdvertisements",
+	domain.BLE_ADVERTISEMENTS_SENSOR: "bleAdverts",
 }
 
 type readingsQueryClient interface {
@@ -77,6 +77,9 @@ func (r *ReadingsRepository) GetReadings(ctx context.Context, query port.Reading
 		}
 		if _, seen := result.Scalars[sensor]; !seen {
 			result.Scalars[sensor] = []domain.ScalarReading{}
+			if field != strings.ToLower(field) {
+				field = `"` + field + `"`
+			}
 			fields = append(fields, field)
 		}
 	}
@@ -177,7 +180,7 @@ func readingsSQL(fields []string, wantPIR bool) string {
 		for _, field := range fields {
 			selects = append(selects, "NULL AS "+field)
 		}
-		selects = append(selects, "pir_id", "value AS pir_value")
+		selects = append(selects, "pir_id", "activity AS pir_value")
 		parts = append(parts, "SELECT "+strings.Join(selects, ", ")+" FROM pir_reading WHERE building = $building AND room = $room AND time >= $start AND time <= $end")
 	}
 	return "SELECT * FROM (" + strings.Join(parts, " UNION ALL ") + ") AS readings ORDER BY time, pir_id"
@@ -207,7 +210,7 @@ func readingValue(value any) (float64, error) {
 	}
 }
 
-// InfluxDB creates measurements and optional columns only after their first write.
+// InfluxDB creates measurements only after their first write.
 // Retry only these known planning failures; each retry removes a requested source.
 func omitAbsentTelemetry(err error, fields []string, wantPIR bool) ([]string, bool, bool) {
 	var flightError interface{ GRPCStatus() *status.Status }
@@ -221,13 +224,6 @@ func omitAbsentTelemetry(err error, fields []string, wantPIR bool) ([]string, bo
 	}
 	if wantPIR && message == prefix+"Error during planning: table 'public.iox.pir_reading' not found" {
 		return fields, false, true
-	}
-	if strings.HasPrefix(message, prefix+"Schema error: No field named co2equivalent. Valid fields are ") {
-		for i, field := range fields {
-			if field == "co2equivalent" {
-				return append(fields[:i:i], fields[i+1:]...), wantPIR, true
-			}
-		}
 	}
 	return fields, wantPIR, false
 }

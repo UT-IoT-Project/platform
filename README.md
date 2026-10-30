@@ -45,71 +45,67 @@ Run `sh tests/mosquitto_ingress_timestamp.sh` from this directory to build an
 isolated broker image and check timestamping, offline delivery, and payload
 validation.
 
-Telegraf subscribes to `sensors/<buildingName>/<roomNumber>` at QoS 1. For
+Telegraf subscribes to `sensors/<buildingName>/<roomNumber>` at QoS 1. The
+current ESP32 firmware publishes at QoS 0. For
 example, Building BBB, room 212 publishes to `sensors/BBB/212`. The ESP32
-payload has no timestamp. The required telemetry contract looks like this
-(`co2equivalent` is optional):
+payload has no timestamp. Its telemetry event looks like this:
 
 ```json
 {
   "pressure": 1013.25,
   "humidity": 48.2,
   "temperature": 22.5,
-  "co2equivalent": 615.0,
+  "co2Equivalent": 615.0,
   "voc": 0.42,
   "iaq": 12345.6,
   "mic_vol": 0.18,
-  "busy_level": 2,
+  "busynessLabel": 2,
   "wifiPackets": 42,
-  "bleAdvertisements": 17,
-  "PIRs": [
-    {"ID": "pir-1", "value": 1},
-    {"ID": "pir-2", "value": 0}
+  "bleAdverts": 17,
+  "pirs": [
+    {"ID": 1, "activity": 100},
+    {"ID": 2, "activity": 0},
+    {"ID": 3, "activity": 40}
   ]
 }
 ```
 
 Firmware is maintained in a separate repository and is not changed here.
-Coordinate adoption of these exact field names and uppercase PIR `ID` with
-the firmware owner before deployment. Both `wifiPackets` and
-`bleAdvertisements` are required signed 32-bit JSON integers (-2147483648 through
-2147483647, the ESP32 `int` range). Negative values are allowed. Coordinate the
-firmware and Telegraf rollout and drain or handle old queued publications: Telegraf can
-reject legacy room payloads that lack these required fields. The database is
-refreshed when the telemetry contract changes; no historical backfill is included.
+Both `wifiPackets` and `bleAdverts` are required unsigned 32-bit JSON integers
+(0 through 4294967295). The database is refreshed when the telemetry contract
+changes; no historical backfill is included.
 
 Mosquitto's incoming-message plugin adds a top-level `timestamp` containing
 Unix milliseconds when the broker receives an accepted sensor publication.
 For example, the JSON delivered to Telegraf has the same readings and PIR
 array, plus `"timestamp": 1792066530250`. The plugin rejects malformed sensor
 JSON and sensor payloads that already contain `timestamp`. Both Telegraf JSON
-v2 consumers use this value as the InfluxDB point time, including when a
-message waits in the broker while Telegraf is offline. The timestamp is the
+v2 consumers use this value as the InfluxDB point time. The current firmware's
+QoS 0 publications are not queued for Telegraf while it is offline. The timestamp is the
 broker receipt time, not the ESP32 sampling time: buffering on the ESP32 and
 network delay before broker receipt are not measured. Keep the broker clock
 synchronized for useful times.
 
-`pressure`, `humidity`, `temperature`, `co2equivalent`, `voc`, `iaq`, and
-`mic_vol` are float32 values from the ESP32; `co2equivalent` is optional.
-`busy_level` is an int8 value (-128 through 127). Telegraf converts the
-floating-point readings to its `float` field type and `busy_level`,
-`wifiPackets`, and `bleAdvertisements` to `int`;
-its parser does not enforce the source's float32 precision, int8 range, or the
-wireless counts' signed 32-bit range.
-`PIRs` is an array of objects with a stable string `ID` and numeric `value`.
+`pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`, and
+`mic_vol` are float32 values from the ESP32. `busynessLabel` is a firmware
+unsigned byte currently emitting labels 0 through 3. Telegraf converts the
+floating-point readings to its `float` field type and `busynessLabel`,
+`wifiPackets`, and `bleAdverts` to `int`;
+its parser does not enforce the source's float32 precision or integer ranges.
+`pirs` is an array of objects with numeric `ID` and integer `activity` (0 through 100).
 Telegraf writes two measurements into the `busyness_sensing` database:
 
 | Measurement | Tags | Fields |
 | --- | --- | --- |
-| `room_telemetry` | `building`, `room` | `pressure`, `humidity`, `temperature`, optional `co2equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level`, `wifiPackets`, `bleAdvertisements` |
-| `pir_reading` | `building`, `room`, `pir_id` | `value` |
+| `room_telemetry` | `building`, `room` | `pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`, `mic_vol`, `busynessLabel`, `wifiPackets`, `bleAdverts` |
+| `pir_reading` | `building`, `room`, `pir_id` | `activity` |
 
 Room and building identifiers are tags so queries can filter by them. Each PIR
 is written as its own point so its ID remains attached to the numeric value.
 Service config lives in `configs/influxdb3.env` and
 `configs/telegraf.conf`. Set
 `INFLUXDB3_AUTH_TOKEN` in the environment if InfluxDB authentication is enabled.
-QoS 1 can deliver the same publication more than once. A queued subscriber
+QoS 1 publications from other publishers can be redelivered. A queued subscriber
 redelivery retains the enriched payload and its timestamp; a repeated
 publication reaching the broker may receive another timestamp. Ingestion is
 not deduplicated. Millisecond precision can also give distinct readings the
@@ -150,31 +146,29 @@ The OpenAPI contract is
 documented in [`docs/api/openapi.yaml`](docs/api/openapi.yaml). The contract
 uses `GET /api/v1/readings/{building}/{roomNumber}` with `start_time`,
 `end_time`, and repeated `sensors` query parameters. Supported sensor names are
-`PIRs`, `pressure`, `humidity`, `temperature`, `co2equivalent`, `voc`, `iaq`,
-`mic_vol`, `busy_level`, `wifiPackets`, and `bleAdvertisements`. Requests for a
+`pirs`, `pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`,
+`mic_vol`, `busynessLabel`, `wifiPackets`, and `bleAdverts`. Requests for a
 building or room absent from the database, or without readings for the requested
 sensors and time range,
 return HTTP 404; this does not establish that a room is nonexistent. The route
 is implemented through the core readings service and InfluxDB adapter. Responses
-include an array for every requested sensor, with `PIRs` grouped by timestamp
-and uppercase `ID` preserved for each PIR value. The two wireless counts use
-signed 32-bit JSON integer response values. Storage and core types use `int64`
+include an array for every requested sensor, with `pirs` grouped by timestamp
+and numeric uppercase `ID` preserved for each PIR activity. The two wireless counts use
+unsigned 32-bit JSON integer response values. Storage and core types use `int64`
 internally without float conversion; the HTTP mapper rejects out-of-range stored
 counts with a generic 500 response. The broker parses and reprints JSON numbers
-through cJSON doubles, which preserve the signed 32-bit range but cannot preserve
-arbitrary int64 values. The earlier local Compose smoke test predates these
-counters; helper and Go unit tests cover their contract, and the broker integration
-test verifies both signed 32-bit bounds survive timestamp insertion. A separate
-local Compose smoke test on 2026-10-30 published `wifiPackets` 42 and
-`bleAdvertisements` 17 through MQTT, Telegraf, and InfluxDB 3.11 Core, then
-retrieved both as integer values from the HTTP API alongside temperature and
-identified PIR readings. This test did not use ESP32 firmware or a production
-deployment.
+through cJSON doubles, which exactly preserve the unsigned 32-bit range but cannot preserve
+arbitrary int64 values. A local Compose smoke test on 2026-10-30 published
+the firmware-shaped payload at QoS 0 through Mosquitto, Telegraf, and
+InfluxDB 3.11 Core. The API returned all eleven requested sensor arrays,
+including numeric PIR IDs and activities, `wifiPackets` 4294967295, and
+`bleAdverts` 2147483648. This used a representative payload, not a physical
+ESP32 or production deployment.
 
 ## Raspberry Pi helper commands
 
 The publish helper validates generated wireless counts as JSON integer syntax
-within signed 32-bit range before publishing. Its `--raw` mode sends the supplied
+within unsigned 32-bit range before publishing. Its `--raw` mode sends the supplied
 payload as-is and bypasses generated-payload validation.
 
 Run these from the repository root on the Raspberry Pi:
@@ -184,9 +178,9 @@ docker compose up -d --build
 docker compose down
 
 ./utils/insert_mqtt.sh -b BBB -r 212 --pressure 1013.25 -H 48.2 -t 22.5 \
-  --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 \
-  --wifi-packets 42 --ble-advertisements 17 \
-  -c 615.0 -p pir-1=1,pir-2=0
+  --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busyness-label 2 \
+  --wifi-packets 42 --ble-adverts 17 \
+  -c 615.0 -p 1=100,2=0,3=40
 
 ./utils/read_mqtt.sh live -b BBB -n 5
 ./utils/read_mqtt.sh history -b BBB -r 212 -s 30m

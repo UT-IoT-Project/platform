@@ -1,0 +1,9 @@
+# Firmware Payload Contract Design
+
+The backend ingestion and historical API must follow `esp32/src/main.cpp:preparePayload()` as currently written. The MQTT topic remains `sensors/<building>/<room>` and Mosquitto adds `timestamp` in Unix milliseconds. A firmware event has `temperature`, `humidity`, `pressure`, `iaq`, `voc`, `co2Equivalent`, `mic_vol`, `wifiPackets`, `bleAdverts`, `busynessLabel`, and `pirs`. Each PIR has numeric `ID` and numeric `activity`. There is no `temp` field.
+
+Telegraf stores room fields under those names and PIR readings with an ID tag and activity field, preserving broker receipt time. The HTTP sensor names and response property names use the same firmware spelling. The existing historical query envelope, timestamp formatting, and grouping by timestamp remain. PIR IDs are unsigned 32-bit JSON integers; PIR activities are unsigned-byte JSON integers. `wifiPackets` and `bleAdverts` are unsigned 32-bit JSON integers (0..4294967295). `busynessLabel` is the firmware's unsigned byte; the current potmeter emits labels 0..3 and current PIR emitters use IDs 1..3 with activity 0..100. `co2Equivalent` is sent by the firmware; a fresh database is assumed when this contract changes, so no missing-column fallback is needed.
+
+The publish helper creates matching representative payloads, including numeric PIR IDs. Its QoS may stay 1 as a testing tool; firmware currently publishes at QoS 0. Documentation must describe this actual delivery behavior and avoid promising queued QoS 1 firmware publications.
+
+Approach: update the ingestion mapping, API names and DTOs, helper, Swagger, and contract documentation in the existing isolated worktree. Keep internal Go sensor enum names where they do not affect the public contract. Avoid firmware edits because its payload is the source of truth for this change.

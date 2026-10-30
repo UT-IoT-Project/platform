@@ -3,6 +3,7 @@ package response
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/jouleion/busyness-sensing/backend/internal/core/domain"
@@ -20,15 +21,15 @@ type scalarReadingResponse struct {
 }
 type integerReadingResponse struct {
 	Timestamp string `json:"timestamp"`
-	Value     int32  `json:"value"`
+	Value     uint32 `json:"value"`
 }
 type busyLevelResponse struct {
 	Timestamp string `json:"timestamp"`
-	Value     int8   `json:"value"`
+	Value     uint8  `json:"value"`
 }
 type pirValueResponse struct {
-	ID    string  `json:"ID"`
-	Value float64 `json:"value"`
+	ID       uint32 `json:"ID"`
+	Activity uint8  `json:"activity"`
 }
 type pirReadingResponse struct {
 	Timestamp string             `json:"timestamp"`
@@ -42,10 +43,10 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 	}
 	formatTime := func(timestamp time.Time) string { return timestamp.In(location).Format("2006-01-02 15:04:05.000") }
 	names := map[domain.SensorType]string{
-		domain.PIR_SENSOR: "PIRs", domain.PRESSURE_SENSOR: "pressure", domain.HUMIDITY_SENSOR: "humidity", domain.TEMPERATURE_SENSOR: "temperature",
+		domain.PIR_SENSOR: "pirs", domain.PRESSURE_SENSOR: "pressure", domain.HUMIDITY_SENSOR: "humidity", domain.TEMPERATURE_SENSOR: "temperature",
 		domain.VOC_SENSOR: "voc", domain.IAQ_SENSOR: "iaq", domain.MIC_VOL_SENSOR: "mic_vol",
-		domain.WIFI_PACKETS_SENSOR: "wifiPackets", domain.BLE_ADVERTISEMENTS_SENSOR: "bleAdvertisements",
-		domain.CO2EQUIVALENT_SENSOR: "co2equivalent", domain.BUSY_LEVEL: "busy_level",
+		domain.WIFI_PACKETS_SENSOR: "wifiPackets", domain.BLE_ADVERTISEMENTS_SENSOR: "bleAdverts",
+		domain.CO2EQUIVALENT_SENSOR: "co2Equivalent", domain.BUSY_LEVEL: "busynessLabel",
 	}
 	response := Readings{Status: 200, Message: "data retrieved successfully", Data: make(map[string]any)}
 	for _, sensor := range query.Sensors {
@@ -62,10 +63,14 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 			for _, reading := range result.PIR {
 				values := make([]pirValueResponse, 0, len(reading.Values))
 				for _, value := range reading.Values {
-					if !finite(value.Value) {
+					id, err := strconv.ParseUint(value.ID, 10, 32)
+					if err != nil {
+						return Readings{}, fmt.Errorf("invalid PIR ID: %w", err)
+					}
+					if !finite(value.Value) || value.Value < 0 || value.Value > math.MaxUint8 || math.Trunc(value.Value) != value.Value {
 						return Readings{}, fmt.Errorf("invalid PIR value")
 					}
-					values = append(values, pirValueResponse{ID: value.ID, Value: value.Value})
+					values = append(values, pirValueResponse{ID: uint32(id), Activity: uint8(value.Value)})
 				}
 				readings = append(readings, pirReadingResponse{Timestamp: formatTime(reading.Timestamp), Values: values})
 			}
@@ -73,19 +78,19 @@ func MapReadings(query port.ReadingsQuery, result port.ReadingsResult) (Readings
 		case domain.WIFI_PACKETS_SENSOR, domain.BLE_ADVERTISEMENTS_SENSOR:
 			readings := make([]integerReadingResponse, 0, len(result.Integers[sensor]))
 			for _, reading := range result.Integers[sensor] {
-				if reading.Value < math.MinInt32 || reading.Value > math.MaxInt32 {
-					return Readings{}, fmt.Errorf("wireless count outside signed 32-bit range")
+				if reading.Value < 0 || reading.Value > math.MaxUint32 {
+					return Readings{}, fmt.Errorf("wireless count outside unsigned 32-bit range")
 				}
-				readings = append(readings, integerReadingResponse{Timestamp: formatTime(reading.Timestamp), Value: int32(reading.Value)})
+				readings = append(readings, integerReadingResponse{Timestamp: formatTime(reading.Timestamp), Value: uint32(reading.Value)})
 			}
 			response.Data[name] = readings
 		case domain.BUSY_LEVEL:
 			readings := make([]busyLevelResponse, 0, len(result.Scalars[sensor]))
 			for _, reading := range result.Scalars[sensor] {
-				if !finite(reading.Value) || reading.Value < -128 || reading.Value > 127 || math.Trunc(reading.Value) != reading.Value {
-					return Readings{}, fmt.Errorf("invalid busy level")
+				if !finite(reading.Value) || reading.Value < 0 || reading.Value > math.MaxUint8 || math.Trunc(reading.Value) != reading.Value {
+					return Readings{}, fmt.Errorf("invalid busyness label")
 				}
-				readings = append(readings, busyLevelResponse{Timestamp: formatTime(reading.Timestamp), Value: int8(reading.Value)})
+				readings = append(readings, busyLevelResponse{Timestamp: formatTime(reading.Timestamp), Value: uint8(reading.Value)})
 			}
 			response.Data[name] = readings
 		default:

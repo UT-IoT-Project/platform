@@ -61,21 +61,19 @@ agreed telemetry contract is:
   millisecond `timestamp` before subscriber delivery. Firmware must not send
   this property; the plugin rejects sensor messages that already contain it,
   as well as malformed sensor JSON.
-- Float32 `pressure`, `humidity`, `temperature`, `voc`, `iaq`, and `mic_vol`, plus
-  optional float32 `co2equivalent`.
-- `busy_level`: int8 (-128 through 127).
-- Required `wifiPackets` and `bleAdvertisements`: signed 32-bit JSON integers
-  (-2147483648 through 2147483647, the ESP32 `int` range). Negative values are
-  allowed. They are stored as InfluxDB `int` fields and transported internally
-  as `int64`; HTTP validates the range before emitting `int32` JSON values.
-- `PIRs`: array entries with stable string `ID` and numeric `value` properties.
+- Float32 `pressure`, `humidity`, `temperature`, `co2Equivalent`, `voc`, `iaq`,
+  and `mic_vol`.
+- `busynessLabel`: an unsigned byte currently emitting labels 0 through 3.
+- Required `wifiPackets` and `bleAdverts`: unsigned 32-bit JSON integers
+  (0 through 4294967295). They are stored as InfluxDB `int` fields and
+  transported internally as `int64`; HTTP validates the range before emitting
+  integer JSON values.
+- `pirs`: array entries with numeric uppercase `ID` (currently 1, 2, and 3)
+  and integer `activity` (0 through 100) properties.
 
-These field names are implemented in this backend and its Telegraf config.
-Firmware is maintained separately and is not updated here; coordinate adoption
-of this contract with its owner before deployment. Coordinate the firmware and
-Telegraf rollout and drain or handle old queued publications: required wireless
-fields can cause Telegraf to reject legacy room payloads. The database is
-refreshed with contract updates; no historical backfill is included.
+These field names follow `esp32/src/main.cpp:preparePayload()` in the separate
+firmware repository. The database is refreshed with contract updates; no
+historical backfill is included.
 
 The Telegraf config uses separate MQTT consumers for room readings and
 PIR readings. It writes `room_telemetry` points with `building` and `room`
@@ -83,15 +81,16 @@ tags, and `pir_reading` points with `building`, `room`, and `pir_id` tags.
 Numeric readings are fields. Keep PIR identity attached to the corresponding
 value; do not flatten anonymous array values. Reconfirm this mapping if the
 external firmware contract changes. The parser converts float32 source
-readings to its `float` field type and `busy_level`, `wifiPackets`, and
-`bleAdvertisements` to `int` in `room_telemetry`; it does not
-enforce float32 precision, the int8 range, or the wireless counts' signed 32-bit
-range. The helper validates generated wireless counts for integer syntax and this
-range without arithmetic overflow; `--raw` bypasses generated-payload validation.
-The broker cJSON parse/reprint path uses doubles, which exactly preserve the
-signed 32-bit range but cannot preserve arbitrary int64 values. Both consumers
-use the broker `timestamp` as point time, including for messages queued while
-Telegraf is offline. The PIR array and each `ID`/`value` pair remain unchanged. This is
+readings to its `float` field type and `busynessLabel`, `wifiPackets`, and
+`bleAdverts` to `int` in `room_telemetry`; it does not
+enforce float32 precision or the integer ranges. The helper validates generated
+wireless counts for integer syntax and this range without arithmetic overflow;
+`--raw` bypasses generated-payload validation. The broker cJSON parse/reprint
+path uses doubles, which exactly preserve the unsigned 32-bit range but cannot
+preserve arbitrary int64 values. Both consumers use the broker `timestamp` as
+point time. The current firmware publishes at QoS 0, so its publications are
+not queued for an offline Telegraf subscriber. The PIR array and each
+`ID`/`activity` pair remain unchanged. This is
 broker receipt time, not device sampling time: ESP32 buffering and network
 delay before receipt can make a reading appear later than it was sampled.
 Synchronize the broker clock.
@@ -99,7 +98,7 @@ Synchronize the broker clock.
 If multiple devices can publish for one room, include a stable `device_id` in
 the topic or payload so readings remain distinguishable. InfluxDB fields are
 scalar values. For a variable-length PIR array, preserve sensor identity
-explicitly (for example, array entries with stable `ID` and `value`
+explicitly (for example, array entries with stable `ID` and `activity`
 properties), or transform the data into named fields before writing. Do not
 flatten anonymous values in a way that loses which PIR produced them. For
 InfluxDB, use tags for string identifiers such as building, room, device, and
@@ -114,12 +113,13 @@ at one InfluxDB point. Do not publish historical sensor readings as retained
 MQTT messages; retained messages represent the latest value on a topic, not a
 reading history.
 
-Project decision: use MQTT QoS 1 for sensor telemetry. Configure firmware
-publishers and the Telegraf MQTT consumers to request QoS 1. Mosquitto's
-`max_qos 1` caps the listener at QoS 1, but does not force clients to use QoS 1;
-QoS 0 remains allowed. The Telegraf consumers use stable client IDs and
-persistent sessions so messages can be queued while they are offline. QoS 1
-can redeliver messages; the current contract does not make writes idempotent.
+The current ESP32 firmware publishes with MQTT QoS 0. The Telegraf consumers
+subscribe at QoS 1, but the broker delivers these firmware messages at QoS 0;
+they are not queued if Telegraf is offline. Mosquitto's
+`max_qos 1` caps the listener at QoS 1, but does not force clients to use QoS 1.
+The Telegraf consumers use stable client IDs and persistent sessions for QoS 1
+publications from other publishers. QoS 1 can redeliver messages; the current
+contract does not make writes idempotent.
 The current topic does not identify a device. If multiple devices can publish
 to the same room, update the agreed topic or payload to include a stable
 `device_id` before relying on device-level readings.
@@ -168,19 +168,17 @@ A local Compose smoke test on 2026-10-30 verified MQTT → Telegraf → InfluxDB
 empty-result 404 responses, and over-24-hour 400 responses. This verifies the
 tested local setup, not a production deployment:
 
-- The API accepts `PIRs`, `pressure`, `humidity`, `temperature`,
-  `co2equivalent`, `voc`, `iaq`, `mic_vol`, `busy_level`, `wifiPackets`, and
-  `bleAdvertisements` as sensor names.
-  Response keys use the same names; grouped PIR values retain uppercase `ID`.
-  Wireless counts return signed 32-bit integer JSON values; stored values outside
-  that range cause a generic 500 response. The Go core and adapter retain int64
-  values internally without float conversion. This contract alignment is covered
-  by helper and Go unit tests, with both external bounds covered by the broker
-  integration test. A separate local Compose smoke test on 2026-10-30 published
-  one event with `wifiPackets` 42 and `bleAdvertisements` 17 through Mosquitto,
-  Telegraf, and InfluxDB 3.11 Core, then verified both integer values through
-  the HTTP API alongside temperature and identified PIR readings. It did not
-  exercise ESP32 firmware or a production deployment.
+- The API accepts `pirs`, `pressure`, `humidity`, `temperature`,
+  `co2Equivalent`, `voc`, `iaq`, `mic_vol`, `busynessLabel`, `wifiPackets`, and
+  `bleAdverts` as sensor names. Response keys use the same names; grouped PIR
+  activities retain numeric uppercase `ID`. Wireless counts return unsigned
+  32-bit integer JSON values; stored values outside that range cause a generic
+  500 response. The Go core and adapter retain int64 values internally without
+  float conversion. A local Compose smoke test on 2026-10-30 published a
+  firmware-shaped QoS 0 event and verified all eleven requested sensor arrays
+  through HTTP, including numeric PIR IDs and activities, `wifiPackets`
+  4294967295, and `bleAdverts` 2147483648. This used a representative payload,
+  not a physical ESP32 or production deployment.
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.
   It wires the InfluxDB readings repository into the core readings service and
@@ -210,11 +208,12 @@ tested local setup, not a production deployment:
   checks `/ping` through that client with a five-second timeout. Compose uses
   `/health` for its separate InfluxDB healthcheck. The reading repository runs
   a parameterized batch time-range query across the requested room and PIR
-  measurements and maps results to core types. Known missing-table or optional
-  CO2-column planning errors trigger retries without the absent source; normal
-  successful requests use one query. It is wired through the core service into
-  the HTTP handler and was exercised against local InfluxDB 3.11 Core, including
-  fresh-database and missing-PIR/CO2 cases. Missing-room handling also has a unit
+  measurements and maps results to core types. Known missing-table planning
+  errors trigger retries without the absent source; normal successful requests
+  use one query. `co2Equivalent` is required in the refreshed database. The
+  adapter is wired through the core service into the HTTP handler and was
+  exercised against local InfluxDB 3.11 Core, including fresh-database and
+  missing-PIR cases. Missing-room handling also has a unit
   regression test. Server health does not verify database existence or query
   authorization.
 - There is no Go MQTT subscriber. Telegraf owns ingestion; the local smoke test

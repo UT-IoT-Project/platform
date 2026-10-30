@@ -18,17 +18,17 @@ var (
 const timestampLayout = "2006-01-02 15:04:05.000"
 
 var sensorTypes = map[string]domain.SensorType{
-	"wifiPackets":       domain.WIFI_PACKETS_SENSOR,
-	"bleAdvertisements": domain.BLE_ADVERTISEMENTS_SENSOR,
-	"PIRs":              domain.PIR_SENSOR,
-	"pressure":          domain.PRESSURE_SENSOR,
-	"humidity":          domain.HUMIDITY_SENSOR,
-	"temperature":       domain.TEMPERATURE_SENSOR,
-	"co2equivalent":     domain.CO2EQUIVALENT_SENSOR,
-	"voc":               domain.VOC_SENSOR,
-	"iaq":               domain.IAQ_SENSOR,
-	"mic_vol":           domain.MIC_VOL_SENSOR,
-	"busy_level":        domain.BUSY_LEVEL,
+	"wifiPackets":   domain.WIFI_PACKETS_SENSOR,
+	"bleAdverts":    domain.BLE_ADVERTISEMENTS_SENSOR,
+	"pirs":          domain.PIR_SENSOR,
+	"pressure":      domain.PRESSURE_SENSOR,
+	"humidity":      domain.HUMIDITY_SENSOR,
+	"temperature":   domain.TEMPERATURE_SENSOR,
+	"co2Equivalent": domain.CO2EQUIVALENT_SENSOR,
+	"voc":           domain.VOC_SENSOR,
+	"iaq":           domain.IAQ_SENSOR,
+	"mic_vol":       domain.MIC_VOL_SENSOR,
+	"busynessLabel": domain.BUSY_LEVEL,
 }
 
 type Readings struct {

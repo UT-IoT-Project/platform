@@ -19,14 +19,14 @@ Required (unless --raw is used):
       --voc N
       --iaq N
       --mic-vol N       sent as "mic_vol"
-      --busy-level N    integer from -128 through 127
-      --wifi-packets N  signed 32-bit integer sent as "wifiPackets"
-      --ble-advertisements N
-                        signed 32-bit integer sent as "bleAdvertisements"
+      --busyness-label N  integer from 0 through 255
+      --wifi-packets N  unsigned 32-bit integer sent as "wifiPackets"
+      --ble-adverts N
+                        unsigned 32-bit integer sent as "bleAdverts"
+  -c, --co2-equivalent N
 
 Optional:
-  -c, --co2equivalent N
-  -p, --pirs LIST        ID=value pairs, e.g. pir1=0,pir2=1
+  -p, --pirs LIST        numeric ID=activity pairs, e.g. 1=0,2=1
       --raw JSON         send this payload as-is instead of building one
       --topic TOPIC      override the topic (required with --raw if no -b/-r)
       --dry-run          print topic and payload, do not publish
@@ -35,7 +35,7 @@ Optional:
 Env: MQTT_HOST (127.0.0.1), MQTT_PORT (1883), MQTT_USER, MQTT_PASS
 
 Example:
-  ./utils/insert_mqtt.sh -b gui-test -r 101 --pressure 1013.25 -H 44 -t 21.5 --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 --wifi-packets 42 --ble-advertisements 17 -c 600 -p pir1=1,pir2=0
+  ./utils/insert_mqtt.sh -b gui-test -r 101 --pressure 1013.25 -H 44 -t 21.5 --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busyness-label 2 --wifi-packets 42 --ble-adverts 17 -c 600 -p 1=1,2=0
 EOF
 }
 
@@ -56,13 +56,13 @@ build_cmd() {
   fi
 }
 
-building="" room="" pressure="" humidity="" temperature="" co2equivalent="" voc="" iaq="" mic_vol="" busy_level="" wifi_packets="" ble_advertisements="" pirs="" raw="" topic="" dry_run=0
+building="" room="" pressure="" humidity="" temperature="" co2Equivalent="" voc="" iaq="" mic_vol="" busyness_label="" wifi_packets="" ble_adverts="" pirs="" raw="" topic="" dry_run=0
 
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) usage; exit 0 ;;
     --dry-run) dry_run=1; shift ;;
-    -b|--building|-r|--room|--pressure|-t|--temperature|-H|--humidity|-c|--co2equivalent|--voc|--iaq|--mic-vol|--mic_vol|--busy-level|--busy_level|--wifi-packets|--ble-advertisements|-p|--pirs|--raw|--topic)
+    -b|--building|-r|--room|--pressure|-t|--temperature|-H|--humidity|-c|--co2-equivalent|--voc|--iaq|--mic-vol|--mic_vol|--busyness-label|--wifi-packets|--ble-adverts|-p|--pirs|--raw|--topic)
       [[ $# -ge 2 ]] || die "$1 needs a value"
       case $1 in
         -b|--building) building=$2 ;;
@@ -70,13 +70,13 @@ while [[ $# -gt 0 ]]; do
         --pressure) pressure=$2 ;;
         -t|--temperature) temperature=$2 ;;
         -H|--humidity) humidity=$2 ;;
-        -c|--co2equivalent) co2equivalent=$2 ;;
+        -c|--co2-equivalent) co2Equivalent=$2 ;;
         --voc) voc=$2 ;;
         --iaq) iaq=$2 ;;
         --mic-vol|--mic_vol) mic_vol=$2 ;;
-        --busy-level|--busy_level) busy_level=$2 ;;
+        --busyness-label) busyness_label=$2 ;;
         --wifi-packets) wifi_packets=$2 ;;
-        --ble-advertisements) ble_advertisements=$2 ;;
+        --ble-adverts) ble_adverts=$2 ;;
         -p|--pirs) pirs=$2 ;;
         --raw) raw=$2 ;;
         --topic) topic=$2 ;;
@@ -99,26 +99,23 @@ fi
 if [[ -n $raw ]]; then
   payload=$raw
 else
-  [[ -n $pressure && -n $humidity && -n $temperature && -n $voc && -n $iaq && -n $mic_vol && -n $busy_level && -n $wifi_packets && -n $ble_advertisements ]] ||
-    die "pressure, humidity, temperature, voc, iaq, mic_vol, busy_level, wifiPackets, and bleAdvertisements are required (or use --raw)"
-  for reading in pressure humidity temperature voc iaq mic_vol; do
+  [[ -n $pressure && -n $humidity && -n $temperature && -n $voc && -n $iaq && -n $mic_vol && -n $busyness_label && -n $wifi_packets && -n $ble_adverts && -n $co2Equivalent ]] ||
+    die "pressure, humidity, temperature, voc, iaq, mic_vol, busynessLabel, wifiPackets, bleAdverts, and co2Equivalent are required (or use --raw)"
+  for reading in pressure humidity temperature voc iaq mic_vol co2Equivalent; do
     is_number "${!reading}" || die "$reading must be a number"
   done
-  [[ $busy_level =~ ^-?(0|[1-9][0-9]{0,2})$ ]] && ((busy_level >= -128 && busy_level <= 127)) ||
-    die "busy_level must be an integer from -128 through 127"
+  [[ $busyness_label =~ ^(0|[1-9][0-9]{0,2})$ ]] && ((busyness_label <= 255)) ||
+    die "busynessLabel must be an integer from 0 through 255"
 
-  for reading in wifi_packets ble_advertisements; do
+  for reading in wifi_packets ble_adverts; do
     count_value=${!reading}
     # Limit digit length before arithmetic so even oversized inputs cannot overflow.
-    [[ $count_value =~ ^-?(0|[1-9][0-9]{0,9})$ ]] && ((count_value >= -2147483648 && count_value <= 2147483647)) ||
-      die "$reading must be an integer from -2147483648 through 2147483647"
+    [[ $count_value =~ ^(0|[1-9][0-9]{0,9})$ ]] && ((count_value <= 4294967295)) ||
+      die "$reading must be an integer from 0 through 4294967295"
   done
 
-  payload="{\"pressure\":$pressure,\"humidity\":$humidity,\"temperature\":$temperature,\"voc\":$voc,\"iaq\":$iaq,\"mic_vol\":$mic_vol,\"busy_level\":$busy_level,\"wifiPackets\":$wifi_packets,\"bleAdvertisements\":$ble_advertisements"
-  if [[ -n $co2equivalent ]]; then
-    is_number "$co2equivalent" || die "co2equivalent must be a number"
-    payload+=",\"co2equivalent\":$co2equivalent"
-  fi
+  payload="{\"pressure\":$pressure,\"humidity\":$humidity,\"temperature\":$temperature,\"voc\":$voc,\"iaq\":$iaq,\"mic_vol\":$mic_vol,\"busynessLabel\":$busyness_label,\"wifiPackets\":$wifi_packets,\"bleAdverts\":$ble_adverts"
+  payload+=",\"co2Equivalent\":$co2Equivalent"
 
   pir_json=""
   if [[ -n $pirs ]]; then
@@ -126,13 +123,13 @@ else
     for item in "${pir_items[@]}"; do
       pir_id=${item%%=*}
       pir_value=${item#*=}
-      [[ $item == *=* ]] || die "PIR entries must look like ID=value (got '$item')"
-      is_name "$pir_id" || die "invalid PIR ID '$pir_id'"
-      is_number "$pir_value" || die "PIR value for '$pir_id' must be a number"
-      pir_json+="${pir_json:+,}{\"ID\":\"$pir_id\",\"value\":$pir_value}"
+      [[ $item == *=* ]] || die "PIR entries must look like ID=activity (got '$item')"
+      [[ $pir_id =~ ^(0|[1-9][0-9]{0,9})$ ]] && ((pir_id <= 4294967295)) || die "PIR ID must be an integer from 0 through 4294967295"
+      [[ $pir_value =~ ^(0|[1-9][0-9]{0,2})$ ]] && ((pir_value <= 255)) || die "PIR activity for '$pir_id' must be an integer from 0 through 255"
+      pir_json+="${pir_json:+,}{\"ID\":$pir_id,\"activity\":$pir_value}"
     done
   fi
-  payload+=",\"PIRs\":[$pir_json]}"
+  payload+=",\"pirs\":[$pir_json]}"
 fi
 
 if [[ $dry_run -eq 1 ]]; then
