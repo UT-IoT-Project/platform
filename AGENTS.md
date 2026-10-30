@@ -43,7 +43,8 @@ Responsibilities:
 - **InfluxDB** stores timestamped readings and serves time-range queries to the
   Go API. Compose uses InfluxDB 3 Core (`influxdb:3.11-core`) with settings in
   `configs/influxdb3.env`; the Go adapter initializes the SDK and verifies server health at startup;
-  its query API still needs implementation and verification against this version.
+  its reading query adapter has unit tests but still needs live verification
+  against this version.
 - **Go backend** exposes a controlled HTTP API and owns request validation,
   authorization, query limits, response formats, and application use cases. It
   reads from InfluxDB; Telegraf owns MQTT ingestion.
@@ -135,7 +136,7 @@ For a new read endpoint, keep the flow in this direction:
    request/response objects.
 3. The service applies application rules and calls a port from
    `internal/core/port/`.
-4. The InfluxDB adapter implements that port, runs a bounded query, and maps
+4. The InfluxDB adapter implements that port, runs a time-range query, and maps
    results to domain/application types.
 5. The handler maps the result to an HTTP response DTO and status code.
 
@@ -160,13 +161,14 @@ This module is scaffolding, not a completed API:
   healthcheck.
 - `internal/core/domain/` defines sensor types and timestamped scalar and PIR
   reading models. `internal/core/port/` declares batch reading query/result
-  types and service/repository interfaces; implementations do not exist yet.
-  Core services remain unimplemented.
+  types and service/repository interfaces. The InfluxDB adapter implements the
+  reading repository; core services remain unimplemented.
 - `internal/driven/database/influxdb/` initializes the InfluxDB SDK client and
   checks `/ping` through that client with a five-second timeout. Compose uses
-  `/health` for its separate InfluxDB healthcheck. There is no repository or query
-  implementation yet. Server health does not verify database existence or
-  query authorization.
+  `/health` for its separate InfluxDB healthcheck. The reading repository runs
+  one parameterized time-range query across the room and PIR measurements and
+  maps results to core types. It is not wired into an HTTP route yet. Server
+  health does not verify database existence or query authorization.
 - There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server
   and InfluxDB adapter remain scaffolding.
 
