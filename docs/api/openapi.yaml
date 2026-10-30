@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Busyness Sensing Readings API
   version: 1.0.0
-  description: Planned contract for retrieving selected sensor readings over a time range; the HTTP route is not yet implemented.
+  description: The HTTP route validates requests; retrieval of readings is not yet implemented.
 paths:
   /api/v1/readings/{building}/{roomNumber}:
     get:
@@ -16,8 +16,9 @@ paths:
         broker receipt are not represented. Broker clock accuracy affects
         these times. QoS 1 duplicates are not deduplicated, and millisecond
         collisions may merge points in a series. The planned API formats
-        timestamps as `YYYY-MM-DD HH:mm:ss.SSS` in the server's configured
-        local timezone.
+        timestamps as `YYYY-MM-DD HH:mm:ss.SSS` in Europe/Amsterdam local time.
+        Requests with nonexistent or ambiguous local times during daylight
+        saving time changes are rejected.
         Supply one `sensors` query parameter per requested sensor. For
         example:
         `/api/v1/readings/zilverling/Z2402?start_time=2026-10-14%2010:00:00.000&end_time=2026-10-14%2011:00:00.000&sensors=PIR&sensors=temp`.
@@ -40,14 +41,14 @@ paths:
         - name: start_time
           in: query
           required: true
-          description: Start of the requested range, in the server's configured local timezone.
+          description: Start of the requested range, in Europe/Amsterdam local time. Ambiguous or nonexistent local times are invalid.
           schema:
             $ref: '#/components/schemas/Timestamp'
           example: '2026-10-14 10:00:00.000'
         - name: end_time
           in: query
           required: true
-          description: End of the requested range, in the server's configured local timezone.
+          description: End of the requested range, in Europe/Amsterdam local time. Ambiguous or nonexistent local times are invalid.
           schema:
             $ref: '#/components/schemas/Timestamp'
           example: '2026-10-14 11:00:00.000'
@@ -193,7 +194,7 @@ components:
   schemas:
     Timestamp:
       type: string
-      description: Timestamp formatted as YYYY-MM-DD HH:mm:ss.SSS in the server's configured local timezone.
+      description: Timestamp formatted as YYYY-MM-DD HH:mm:ss.SSS in Europe/Amsterdam local time.
       pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$'
       examples:
         - '2026-10-14 10:00:00.000'

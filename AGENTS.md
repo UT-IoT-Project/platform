@@ -150,8 +150,12 @@ This module is scaffolding, not a completed API:
 - `cmd/start.go` loads configuration, initializes logging and the InfluxDB
   client, verifies database server health, and starts the Echo HTTP server.
   It closes the database client when the server returns.
-- `internal/driver/http/server.go` configures Echo middleware but currently
-  registers no application routes.
+- `internal/driver/http/server.go` configures Echo middleware and registers
+  `GET /api/v1/readings/:building/:roomNumber`. The separate readings handler
+  binds and validates the request, converts Europe/Amsterdam timestamps to UTC,
+  and currently returns the generic 500 response for valid requests because no
+  core readings service is wired. It rejects ambiguous and nonexistent local
+  times during daylight saving time changes.
 - `Dockerfile.webserver` packages the backend. `docker-compose.yml` defines backend,
   Mosquitto, InfluxDB 3 Core, and Telegraf services. The derived Mosquitto
   image loads the incoming-message timestamp plugin. Telegraf configuration
@@ -167,7 +171,7 @@ This module is scaffolding, not a completed API:
   checks `/ping` through that client with a five-second timeout. Compose uses
   `/health` for its separate InfluxDB healthcheck. The reading repository runs
   one parameterized time-range query across the room and PIR measurements and
-  maps results to core types. It is not wired into an HTTP route yet. Server
+  maps results to core types. It is not wired into the HTTP handler yet. Server
   health does not verify database existence or query authorization.
 - There is no Go MQTT subscriber. Telegraf owns ingestion; the Go HTTP server
   and InfluxDB adapter remain scaffolding.

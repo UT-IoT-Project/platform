@@ -17,7 +17,12 @@ func NewServer() *Server {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
-	return &Server{e: e}
+	return (&Server{e: e}).registerRoutes()
+}
+
+func (s *Server) registerRoutes() *Server {
+	s.e.GET("/api/v1/readings/:building/:roomNumber", s.getReadings)
+	return s
 }
 
 func (s *Server) Start() error {
