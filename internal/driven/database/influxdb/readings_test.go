@@ -156,24 +156,38 @@ func TestReadingsRepositoryReturnsMoreThanTenThousandRows(t *testing.T) {
 
 func TestReadingsRepositoryReturnsEmptySeriesForRequestedSensors(t *testing.T) {
 	start := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
-	for _, tc := range []struct {
-		name            string
-		sensors         []domain.SensorType
-		unwantedMeasure string
-		want            port.ReadingsResult
+	tests := map[string]struct {
+		query             port.ReadingsQuery
+		wantResult        port.ReadingsResult
+		unwantedMeasure   string
+		wantDatabaseCalls int
 	}{
-		{name: "scalar", sensors: []domain.SensorType{domain.TEMPERATURE_SENSOR}, unwantedMeasure: "pir_reading", want: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {}}}},
-		{name: "PIR", sensors: []domain.SensorType{domain.PIR_SENSOR}, unwantedMeasure: "room_telemetry", want: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+		"requested scalar returns an empty series without querying PIR": {
+			query:             port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.TEMPERATURE_SENSOR}},
+			wantResult:        port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{domain.TEMPERATURE_SENSOR: {}}},
+			unwantedMeasure:   "pir_reading",
+			wantDatabaseCalls: 1,
+		},
+		"requested PIR returns an empty series without querying room telemetry": {
+			query:             port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}},
+			wantResult:        port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
+			unwantedMeasure:   "room_telemetry",
+			wantDatabaseCalls: 1,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			fake := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{})}
 			repo := &ReadingsRepository{client: fake}
-			got, err := repo.GetReadings(context.Background(), port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: tc.sensors})
+			got, err := repo.GetReadings(context.Background(), tc.query)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("got %#v, want %#v", got, tc.want)
+			if !reflect.DeepEqual(got, tc.wantResult) {
+				t.Fatalf("got %#v, want %#v", got, tc.wantResult)
+			}
+			if fake.calls != tc.wantDatabaseCalls {
+				t.Fatalf("database calls = %d, want %d", fake.calls, tc.wantDatabaseCalls)
 			}
 			if strings.Contains(fake.query, tc.unwantedMeasure) {
 				t.Fatalf("unexpected measurement in query: %s", fake.query)
@@ -182,40 +196,66 @@ func TestReadingsRepositoryReturnsEmptySeriesForRequestedSensors(t *testing.T) {
 	}
 }
 
-func TestReadingsRepositoryLeavesRequestValidationToCaller(t *testing.T) {
+func TestReadingsRepositoryInputHandling(t *testing.T) {
 	start := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
-	for _, tc := range []struct {
-		name  string
-		query port.ReadingsQuery
+	tests := map[string]struct {
+		query      port.ReadingsQuery
+		wantResult port.ReadingsResult
+		wantError  string
+		wantCalls  int
+		wantParams influxdb3.QueryParameters
 	}{
-		{name: "empty building", query: port.ReadingsQuery{Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}}},
-		{name: "empty room", query: port.ReadingsQuery{Building: "B", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}}},
-		{name: "zero start", query: port.ReadingsQuery{Building: "B", Room: "R", End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}}},
-		{name: "reversed range", query: port.ReadingsQuery{Building: "B", Room: "R", Start: start.Add(time.Hour), End: start, Sensors: []domain.SensorType{domain.PIR_SENSOR}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+		"empty building is forwarded to InfluxDB": {
+			query:      port.ReadingsQuery{Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}},
+			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
+			wantCalls:  1,
+			wantParams: influxdb3.QueryParameters{"building": "", "room": "R", "start": "2026-10-26T10:00:00Z", "end": "2026-10-26T11:00:00Z"},
+		},
+		"empty room is forwarded to InfluxDB": {
+			query:      port.ReadingsQuery{Building: "B", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}},
+			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
+			wantCalls:  1,
+			wantParams: influxdb3.QueryParameters{"building": "B", "room": "", "start": "2026-10-26T10:00:00Z", "end": "2026-10-26T11:00:00Z"},
+		},
+		"zero start is forwarded to InfluxDB": {
+			query:      port.ReadingsQuery{Building: "B", Room: "R", End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.PIR_SENSOR}},
+			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
+			wantCalls:  1,
+			wantParams: influxdb3.QueryParameters{"building": "B", "room": "R", "start": "0001-01-01T00:00:00Z", "end": "2026-10-26T11:00:00Z"},
+		},
+		"reversed range is forwarded to InfluxDB": {
+			query:      port.ReadingsQuery{Building: "B", Room: "R", Start: start.Add(time.Hour), End: start, Sensors: []domain.SensorType{domain.PIR_SENSOR}},
+			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}, PIR: []domain.PIRReading{}},
+			wantCalls:  1,
+			wantParams: influxdb3.QueryParameters{"building": "B", "room": "R", "start": "2026-10-26T11:00:00Z", "end": "2026-10-26T10:00:00Z"},
+		},
+		"unsupported sensor is rejected by adapter": {
+			query:      port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.SensorType(100)}},
+			wantResult: port.ReadingsResult{Scalars: map[domain.SensorType][]domain.ScalarReading{}},
+			wantError:  "unsupported sensor type 100",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
 			fake := &fakeReadingsClient{rows: influxdb3.NewQueryIteratorFromReader(&oneBatchReader{})}
 			repo := &ReadingsRepository{client: fake}
-			if _, err := repo.GetReadings(context.Background(), tc.query); err != nil {
-				t.Fatal(err)
+			got, err := repo.GetReadings(context.Background(), tc.query)
+			if tc.wantError != "" && (err == nil || !strings.Contains(err.Error(), tc.wantError)) {
+				t.Fatalf("error = %v, want containing %q", err, tc.wantError)
 			}
-			if fake.calls != 1 {
-				t.Fatalf("expected one database query, got %d", fake.calls)
+			if tc.wantError == "" && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.wantResult) {
+				t.Fatalf("result = %#v, want %#v", got, tc.wantResult)
+			}
+			if fake.calls != tc.wantCalls {
+				t.Fatalf("database calls = %d, want %d", fake.calls, tc.wantCalls)
+			}
+			if !reflect.DeepEqual(fake.params, tc.wantParams) {
+				t.Fatalf("query params = %#v, want %#v", fake.params, tc.wantParams)
 			}
 		})
-	}
-}
-
-func TestReadingsRepositoryRejectsUnsupportedSensorType(t *testing.T) {
-	fake := &fakeReadingsClient{}
-	repo := &ReadingsRepository{client: fake}
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, time.UTC)
-	query := port.ReadingsQuery{Building: "B", Room: "R", Start: start, End: start.Add(time.Hour), Sensors: []domain.SensorType{domain.SensorType(100)}}
-	if _, err := repo.GetReadings(context.Background(), query); err == nil || !strings.Contains(err.Error(), "unsupported sensor type") {
-		t.Fatalf("expected unsupported sensor error, got %v", err)
-	}
-	if fake.calls != 0 {
-		t.Fatalf("unsupported sensor reached database %d times", fake.calls)
 	}
 }
 
