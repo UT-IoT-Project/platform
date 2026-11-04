@@ -53,4 +53,3 @@ this work. Document the first-login and data-source steps in the README.
 Validate Compose configuration, confirm the Grafana sign-in page is reachable,
 manually save and test the SQL data source, and confirm a Compose recreation
 retains that data source through the bind mount.
-
