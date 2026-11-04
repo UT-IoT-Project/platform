@@ -2,15 +2,15 @@
 
 This Go module provides the readings API for the busyness sensing project.
 It uses a hexagonal layout: core services depend on ports, while HTTP and database code
-live in adapters. Docker Compose runs the Go backend, Mosquitto, Telegraf, and
-InfluxDB 3 Core. Telegraf ingests MQTT sensor readings into InfluxDB; the
+live in adapters. Docker Compose runs the Go backend, Mosquitto, Telegraf,
+InfluxDB 3 Core, and Grafana. Telegraf ingests MQTT sensor readings into InfluxDB; the
 backend serves those readings through its HTTP API.
 
 | Path | Responsibility |
 | --- | --- |
 | `cmd/` | CLI commands and application wiring |
 | `configs/` | Backend, Mosquitto, InfluxDB, and Telegraf configuration |
-| `volumes/` | Local persistent state for Mosquitto and InfluxDB; runtime data is ignored by Git |
+| `volumes/` | Local persistent state for Mosquitto, InfluxDB, and Grafana; runtime data is ignored by Git |
 | `internal/app/` | Configuration and logging setup |
 | `internal/core/domain/` | Business entities |
 | `internal/core/port/` | Interfaces for services and adapters |
@@ -23,14 +23,14 @@ backend serves those readings through its HTTP API.
 Start the stack from this directory with `docker compose up -d --build` so
 Compose builds the backend from `Dockerfile.webserver` and the Mosquitto image
 with its timestamp plugin. The Mosquitto base image version is pinned in
-`Dockerfile.mosquitto`; Telegraf and InfluxDB image versions are pinned in
+`Dockerfile.mosquitto`; Telegraf, InfluxDB, and Grafana image versions are pinned in
 `docker-compose.yml`.
 InfluxDB is published only on `127.0.0.1:8181`; its local development config
 disables authentication. Keep the stack on a trusted machine and enable
 authentication before exposing it to a network.
 
 Compose waits for Mosquitto and InfluxDB healthchecks to pass before starting
-Telegraf, and waits for InfluxDB before starting the backend. The Mosquitto check only connects and subscribes to a dedicated
+Telegraf, and waits for InfluxDB before starting the backend and Grafana. The Mosquitto check only connects and subscribes to a dedicated
 health topic; it publishes no MQTT message. InfluxDB is checked with its
 `/health` endpoint. Telegraf's healthcheck confirms its process is alive, not
 that readings are currently arriving or being stored.
@@ -40,6 +40,31 @@ Create the InfluxDB database before Telegraf can store readings:
 ```sh
 docker compose exec -T influxdb3 influxdb3 create database --token local-dev-token busyness_sensing
 ```
+
+Grafana is available at <http://127.0.0.1:3000>. On first login, use username
+`admin` and password `admin`, then follow the prompt to choose a new password.
+In **Connections → Data sources**, add the built-in **InfluxDB** data source
+and enter these manual connection settings:
+
+| Setting | Value |
+| --- | --- |
+| Product | `InfluxDB Enterprise 3.x` (the current Grafana UI has no Core entry) |
+| Query language | `SQL` |
+| URL | `http://influxdb3:8181` |
+| Database | `busyness_sensing` |
+| Token | `local-dev-token` if the form requires a nonempty token; local InfluxDB authentication is disabled |
+| Insecure gRPC connection | Enabled, because the local InfluxDB server has no TLS |
+
+Select **Save & test** to verify the connection. When InfluxDB authentication
+is enabled, use a read-only database token instead. Grafana connects directly
+to InfluxDB as an internal visualization tool; UI and Python/ML clients
+continue to use the Go HTTP API.
+
+The bind mount at `volumes/grafana` preserves Grafana users, data sources, and
+dashboards across normal builds and container recreation. Stop Grafana before
+deleting `volumes/grafana` to explicitly reset its state. Grafana runs as root
+only to keep this local bind mount writable; its host port is limited to
+loopback. Data sources and dashboards are configured manually.
 
 Run `sh tests/mosquitto_ingress_timestamp.sh` from this directory to build an
 isolated broker image and check timestamping, offline delivery, and payload

@@ -66,6 +66,19 @@ services:
     volumes:
       - ./volumes/influxdb3/data:/var/lib/influxdb3/data
 
+  grafana:
+    image: grafana/grafana:13.2.2
+    restart: unless-stopped
+    depends_on:
+      influxdb3:
+        condition: service_healthy
+    # Keep the local host bind mount writable across Docker environments.
+    user: "0"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./volumes/grafana:/var/lib/grafana
+
   telegraf:
     image: telegraf:1.40.2-alpine
     restart: unless-stopped
