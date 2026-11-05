@@ -85,9 +85,16 @@ value; do not flatten anonymous array values. Reconfirm this mapping if the
 external firmware contract changes. The parser converts float32 source
 readings to its `float` field type and `busy_level`, `wifiPackets`, and
 `bleAdverts` to `int` in `room_telemetry`; it does not
-enforce float32 precision or the integer ranges. The helper validates generated
-wireless counts for integer syntax and this range without arithmetic overflow;
-`--raw` bypasses generated-payload validation. The broker cJSON parse/reprint
+enforce float32 precision or the integer ranges. The development helper
+`utils/insert_mqtt.sh -b BUILDING -r ROOM` generates
+complete fake readings every five seconds indefinitely (stop with Ctrl-C). It
+uses bounded small-step scalar state, occupancy-correlated wireless counts and
+PIR activities, and stable PIR IDs 1, 2, and 3. Wireless counts are generated as
+unsigned 32-bit JSON integers. Only building/room inputs, help, and `--dry-run`
+are supported; raw payload and per-sensor CLI inputs have been removed. Dry-run
+prints one reading without needing an MQTT publisher. Generated payloads omit
+timestamps; broker receipt timestamping remains unchanged. The broker cJSON
+parse/reprint
 path uses doubles, which exactly preserve the unsigned 32-bit range but cannot
 preserve arbitrary int64 values. Both consumers use the broker `timestamp` as
 point time. The current firmware publishes at QoS 0, so its publications are

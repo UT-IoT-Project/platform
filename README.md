@@ -192,9 +192,18 @@ ESP32 or production deployment.
 
 ## Raspberry Pi helper commands
 
-The publish helper validates generated wireless counts as JSON integer syntax
-within unsigned 32-bit range before publishing. Its `--raw` mode sends the supplied
-payload as-is and bypasses generated-payload validation.
+The development telemetry generator needs only a building and room. It publishes
+a complete fake reading every five seconds indefinitely; stop it with Ctrl-C.
+Scalar readings change in small bounded steps, while wireless counts and PIR
+activities loosely follow occupancy (`busy_level` 0 through 3). All three PIR
+IDs (1, 2, 3) and unsigned 32-bit integer wireless counts are included. This is
+a simulator for development, not calibrated sensor data.
+
+Use `--dry-run` to print one topic and payload without an MQTT publisher or
+network connection. Payloads contain no timestamp; Mosquitto still adds broker
+receipt time before Telegraf ingests them. `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`, and
+`MQTT_PASS` override the local publisher settings. If `mosquitto_pub` is unavailable
+locally, the helper publishes through the Compose Mosquitto container.
 
 Run these from the repository root on the Raspberry Pi:
 
@@ -202,10 +211,8 @@ Run these from the repository root on the Raspberry Pi:
 docker compose up -d --build
 docker compose down
 
-./utils/insert_mqtt.sh -b BBB -r 212 --pressure 1013.25 -H 48.2 -t 22.5 \
-  --voc 0.42 --iaq 12345.6 --mic-vol 0.18 --busy-level 2 \
-  --wifi-packets 42 --ble-adverts 17 \
-  -c 615.0 -p 1=100,2=0,3=40
+./utils/insert_mqtt.sh -b BBB -r 212
+./utils/insert_mqtt.sh -b BBB -r 212 --dry-run
 
 ./utils/read_mqtt.sh live -b BBB -n 5
 ./utils/read_mqtt.sh history -b BBB -r 212 -s 30m
