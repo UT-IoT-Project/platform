@@ -48,6 +48,10 @@ Responsibilities:
 - **Go backend** exposes a controlled HTTP API and owns request validation,
   authorization, query limits, response formats, and application use cases. It
   reads from InfluxDB; Telegraf owns MQTT ingestion.
+- **Grafana** is an internal visualization service bound to loopback-only
+  `127.0.0.1:3000`. Compose starts it after InfluxDB is healthy and persists its
+  state under `volumes/grafana/`. It reads InfluxDB directly through a manually
+  configured datasource.
 - **UI and Python/ML clients** call the Go API. The API is the public boundary
   for reading project data.
 
@@ -202,7 +206,7 @@ tested local setup, not a production deployment:
   ambiguous and nonexistent local times during daylight saving time changes,
   reversed ranges, and ranges over 24 elapsed hours.
 - `Dockerfile.webserver` packages the backend. `docker-compose.yml` defines backend,
-  Mosquitto, InfluxDB 3 Core, and Telegraf services. The derived Mosquitto
+  Mosquitto, InfluxDB 3 Core, Telegraf, and Grafana services. The derived Mosquitto
   image loads the incoming-message timestamp plugin. Telegraf configuration
   writes telemetry into separate room and PIR measurements. Local InfluxDB
   data is stored under `volumes/influxdb3/data/`. Mosquitto and InfluxDB
